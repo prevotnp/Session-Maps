@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { DroneImage } from '@shared/schema';
-import { TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
+import { TrailOverlayType, TrailGroupType, TRAIL_GROUP_CONFIG } from '@/lib/mapUtils';
 
 interface LiveMapInvite {
   id: number;
@@ -196,14 +196,14 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                         <span className="text-xs text-white/50 font-medium uppercase tracking-wider">Trail Overlays</span>
                       </div>
                       <div>
-                        {(Object.keys(TRAIL_OVERLAY_CONFIG) as TrailOverlayType[]).map((type, index, arr) => {
-                          const config = TRAIL_OVERLAY_CONFIG[type];
-                          const isActive = activeTrailOverlays.has(type);
+                        {(Object.keys(TRAIL_GROUP_CONFIG) as TrailGroupType[]).map((groupType, index, arr) => {
+                          const config = TRAIL_GROUP_CONFIG[groupType];
+                          const isActive = config.members.some(t => activeTrailOverlays.has(t));
                           return (
                             <div 
-                              key={type} 
+                              key={groupType} 
                               className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors ${index !== arr.length - 1 ? 'border-b border-white/10' : ''}`}
-                              onClick={() => onToggleLayer(`trails-${type}`)}
+                              onClick={() => onToggleLayer(`trails-${groupType}`)}
                             >
                               <div 
                                 className={cn(

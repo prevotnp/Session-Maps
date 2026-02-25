@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { escapeHtml } from '@/lib/escapeHtml';
-import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
+import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, addTrailGroup, removeTrailGroup, TrailOverlayType, TrailGroupType, TRAIL_OVERLAY_CONFIG, TRAIL_GROUP_CONFIG } from '@/lib/mapUtils';
 
 // Set mapbox access token
 const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -32,7 +32,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [activeLayers, setActiveLayers] = useState<string[]>(['esri-hd']);
-  const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking']));
+  const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking', 'riding']));
   const [isTerrain3D, setIsTerrain3D] = useState(false);
   const [showOutdoorPOIs, setShowOutdoorPOIs] = useState(false);
   const [isTrailInfoLoading, setIsTrailInfoLoading] = useState(false);
@@ -1409,7 +1409,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       // Start with Esri 3D imagery
       addEsriWorldImagery(map);
       setIsTrailInfoLoading(true);
-      addTrailOverlay(map, 'hiking');
+      addTrailGroup(map, 'hiking');
       addBaseTrailLinesAndLabels(map);
 
       const checkTrailSourceLoaded = () => {
@@ -1561,15 +1561,18 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         newActiveLayers.push('property-lines');
       }
     } else if (layerType.startsWith('trails-')) {
-      const trailType = layerType.replace('trails-', '') as TrailOverlayType;
-      if (TRAIL_OVERLAY_CONFIG[trailType]) {
+      const groupType = layerType.replace('trails-', '') as TrailGroupType;
+      if (TRAIL_GROUP_CONFIG[groupType]) {
         const newOverlays = new Set(activeTrailOverlays);
-        if (newOverlays.has(trailType)) {
-          removeTrailOverlay(map, trailType);
-          newOverlays.delete(trailType);
+        const groupConfig = TRAIL_GROUP_CONFIG[groupType];
+        const groupIsActive = groupConfig.members.some(t => newOverlays.has(t));
+        
+        if (groupIsActive) {
+          removeTrailGroup(map, groupType);
+          groupConfig.members.forEach(t => newOverlays.delete(t));
         } else {
-          addTrailOverlay(map, trailType);
-          newOverlays.add(trailType);
+          addTrailGroup(map, groupType);
+          groupConfig.members.forEach(t => newOverlays.add(t));
         }
         setActiveTrailOverlays(newOverlays);
       }

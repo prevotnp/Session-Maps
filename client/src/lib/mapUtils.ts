@@ -1000,6 +1000,50 @@ export const TRAIL_OVERLAY_CONFIG: Record<TrailOverlayType, {
   },
 };
 
+export type TrailGroupType = 'hiking' | 'biking' | 'winter';
+
+export interface TrailGroupConfig {
+  label: string;
+  color: string;
+  icon: string;
+  members: TrailOverlayType[];
+}
+
+export const TRAIL_GROUP_CONFIG: Record<TrailGroupType, TrailGroupConfig> = {
+  hiking: {
+    label: 'Hiking Trails',
+    color: '#e74c3c',
+    icon: 'footprints',
+    members: ['hiking', 'riding'],
+  },
+  biking: {
+    label: 'Bike Trails',
+    color: '#3498db',
+    icon: 'bike',
+    members: ['cycling', 'mtb'],
+  },
+  winter: {
+    label: 'Ski & Skate Trails',
+    color: '#1abc9c',
+    icon: 'snowflake',
+    members: ['skiing', 'skating'],
+  },
+};
+
+export function addTrailGroup(map: mapboxgl.Map, group: TrailGroupType): void {
+  const config = TRAIL_GROUP_CONFIG[group];
+  config.members.forEach(type => addTrailOverlay(map, type));
+}
+
+export function removeTrailGroup(map: mapboxgl.Map, group: TrailGroupType): void {
+  const config = TRAIL_GROUP_CONFIG[group];
+  config.members.forEach(type => removeTrailOverlay(map, type));
+}
+
+export function isTrailGroupActive(activeOverlays: Set<TrailOverlayType>, group: TrailGroupType): boolean {
+  return TRAIL_GROUP_CONFIG[group].members.some(type => activeOverlays.has(type));
+}
+
 export function addTrailOverlay(map: mapboxgl.Map, type: TrailOverlayType): void {
   const config = TRAIL_OVERLAY_CONFIG[type];
   const sourceId = `waymarked-trails-${type}`;
