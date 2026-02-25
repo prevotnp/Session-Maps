@@ -3188,8 +3188,16 @@ Response JSON format:
       return;
     }
 
-    const res = Object.create(require('http').ServerResponse.prototype);
-    sessionMiddleware(request as any, res, () => {
+    const mockRes: any = {
+      end: () => {},
+      setHeader: () => mockRes,
+      getHeader: () => undefined,
+      writeHead: () => mockRes,
+      on: () => mockRes,
+      emit: () => mockRes,
+    };
+
+    sessionMiddleware(request as any, mockRes, () => {
       const sess = (request as any).session;
       const authenticatedUserId = sess?.passport?.user;
 
