@@ -1412,19 +1412,27 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       addTrailGroup(map, 'hiking');
       addBaseTrailLinesAndLabels(map);
 
-      const checkTrailSourceLoaded = () => {
-        if (map.getSource('streets-labels') && map.isSourceLoaded('streets-labels')) {
-          setIsTrailInfoLoading(false);
+      const trailSources = new Set(['streets-labels', 'waymarked-trails-hiking', 'waymarked-trails-riding']);
+      const loadedSources = new Set<string>();
+      const checkAllLoaded = () => {
+        for (const src of trailSources) {
+          if (map.getSource(src) && map.isSourceLoaded(src)) {
+            loadedSources.add(src);
+          }
         }
-      };
-      const onSourceData = (e: any) => {
-        if (e.sourceId === 'streets-labels' && e.isSourceLoaded) {
+        if (loadedSources.has('streets-labels') && loadedSources.size >= 2) {
           setIsTrailInfoLoading(false);
           map.off('sourcedata', onSourceData);
         }
       };
+      const onSourceData = (e: any) => {
+        if (trailSources.has(e.sourceId) && e.isSourceLoaded) {
+          loadedSources.add(e.sourceId);
+          checkAllLoaded();
+        }
+      };
       map.on('sourcedata', onSourceData);
-      setTimeout(checkTrailSourceLoaded, 2000);
+      setTimeout(checkAllLoaded, 3000);
       setTimeout(() => { setIsTrailInfoLoading(false); map.off('sourcedata', onSourceData); }, 15000);
       
       // Enable 3D terrain by default

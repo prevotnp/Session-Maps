@@ -1692,10 +1692,17 @@ const MapView: React.FC<MapViewProps> = ({
 
       {/* Trail Info Loading Indicator */}
       {isTrailInfoLoading && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-dark/90 backdrop-blur-sm rounded-xl shadow-2xl border border-amber-500/30 px-6 py-3 animate-in fade-in duration-300">
-          <div className="flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-white font-medium">Trail info loading...</span>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-dark/90 backdrop-blur-md rounded-2xl shadow-2xl border border-amber-500/20 px-8 py-5 animate-in fade-in duration-300">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative w-10 h-10">
+              <div className="absolute inset-0 border-3 border-amber-500/20 rounded-full" />
+              <div className="absolute inset-0 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              <svg className="absolute inset-0 m-auto w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </div>
+            <span className="text-white font-medium text-sm">Loading Trail Info...</span>
+            <span className="text-white/50 text-xs">Trail names, paths & overlays</span>
           </div>
         </div>
       )}
