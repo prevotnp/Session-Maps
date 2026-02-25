@@ -8,6 +8,8 @@ import { storage as dbStorage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 
+export let sessionMiddleware: ReturnType<typeof session>;
+
 declare global {
   namespace Express {
     interface User extends SelectUser {}
@@ -58,7 +60,8 @@ export function setupAuth(app: Express) {
   };
 
   app.set("trust proxy", 1);
-  app.use(session(sessionSettings));
+  sessionMiddleware = session(sessionSettings);
+  app.use(sessionMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
 

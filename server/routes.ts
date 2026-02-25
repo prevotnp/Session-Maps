@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage as dbStorage } from "./storage";
-import { setupAuth } from "./auth";
+import { setupAuth, sessionMiddleware } from "./auth";
 import { WebSocketServer, WebSocket } from "ws";
 import Anthropic from '@anthropic-ai/sdk';
 import { 
@@ -3180,15 +3180,39 @@ Response JSON format:
   });
 
   // WebSocket server for real-time location sharing
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
   
+  httpServer.on('upgrade', (request, socket, head) => {
+    if (request.url !== '/ws') {
+      socket.destroy();
+      return;
+    }
+
+    const res = Object.create(require('http').ServerResponse.prototype);
+    sessionMiddleware(request as any, res, () => {
+      const sess = (request as any).session;
+      const authenticatedUserId = sess?.passport?.user;
+
+      if (!authenticatedUserId) {
+        console.log('WebSocket: Rejecting unauthenticated connection');
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        (ws as any).authenticatedUserId = authenticatedUserId;
+        wss.emit('connection', ws, request);
+      });
+    });
+  });
+
   // Store connected clients
   const clients: Map<number, WebSocket> = new Map();
   
   // Store live map session rooms: sessionId -> Set of userIds
   const sessionRooms: Map<number, Set<number>> = new Map();
   
-  // Function to broadcast to all members of a live map session
   function broadcastToSession(sessionId: number, message: any) {
     const room = sessionRooms.get(sessionId);
     if (!room) return;
@@ -3203,27 +3227,52 @@ Response JSON format:
   }
   
   wss.on('connection', (ws: WebSocket) => {
-    let userId: number | null = null;
+    const userId: number = (ws as any).authenticatedUserId;
     let currentSessionId: number | null = null;
+    
+    clients.set(userId, ws);
+    
+    ws.send(JSON.stringify({ 
+      type: 'auth',
+      status: 'success',
+      userId: userId,
+      message: 'Connected to location sharing service'
+    }));
     
     ws.on('message', async (message: string) => {
       try {
         const data = JSON.parse(message);
         
-        // Handle user authentication
         if (data.type === 'auth') {
-          userId = parseInt(data.userId);
-          clients.set(userId, ws);
-          ws.send(JSON.stringify({ 
-            type: 'auth',
-            status: 'success',
-            message: 'Connected to location sharing service'
-          }));
+          return;
         }
         
-        // Handle joining a live map session room
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+        
         if (data.type === 'session:join' && userId) {
           const sessionId = parseInt(data.sessionId);
+          
+          try {
+            const session = await dbStorage.getLiveMapSession(sessionId);
+            if (!session || !session.isActive) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Session not found or ended' }));
+              return;
+            }
+            
+            const members = await dbStorage.getLiveMapMembers(sessionId);
+            const isMember = members.some((m: any) => m.userId === userId) || session.ownerId === userId;
+            
+            if (!isMember) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not a member of this session' }));
+              return;
+            }
+          } catch (err) {
+            console.error('Error verifying session membership:', err);
+          }
+          
           currentSessionId = sessionId;
           
           if (!sessionRooms.has(sessionId)) {
@@ -3237,7 +3286,6 @@ Response JSON format:
           }));
         }
         
-        // Handle leaving a live map session room
         if (data.type === 'session:leave' && userId && currentSessionId) {
           const room = sessionRooms.get(currentSessionId);
           if (room) {
@@ -3249,11 +3297,9 @@ Response JSON format:
           currentSessionId = null;
         }
         
-        // Handle live map location updates
         if (data.type === 'session:location' && userId && currentSessionId) {
           const { latitude, longitude, accuracy, heading } = data;
           
-          // Update member location in database
           await dbStorage.updateLiveMapMemberLocation(
             currentSessionId,
             userId,
@@ -3263,14 +3309,12 @@ Response JSON format:
             heading ? String(heading) : undefined
           );
           
-          // Broadcast to session members
           broadcastToSession(currentSessionId, {
             type: 'member:locationUpdate',
             data: { userId, latitude, longitude, accuracy, heading }
           });
         }
         
-        // Handle location updates (for friend location sharing)
         if (data.type === 'location' && userId) {
           const validation = validateRequest(locationShareSchema, data.location);
           if (!validation.success) {
@@ -3281,16 +3325,25 @@ Response JSON format:
             return;
           }
           
-          // Broadcast location to all other connected clients
-          clients.forEach((client, clientId) => {
-            if (clientId !== userId && client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({
-                type: 'location',
-                userId,
-                location: validation.data
-              }));
-            }
-          });
+          try {
+            const acceptedShares = await dbStorage.getLocationSharesByUser(userId);
+            const friendIds = acceptedShares
+              .filter((share: any) => share.status === 'accepted')
+              .map((share: any) => share.fromUserId === userId ? share.toUserId : share.fromUserId);
+            
+            friendIds.forEach((friendId: number) => {
+              const friendClient = clients.get(friendId);
+              if (friendClient && friendClient.readyState === WebSocket.OPEN) {
+                friendClient.send(JSON.stringify({
+                  type: 'location',
+                  userId,
+                  location: validation.data
+                }));
+              }
+            });
+          } catch (err) {
+            console.error('Error broadcasting location:', err);
+          }
         }
       } catch (error) {
         ws.send(JSON.stringify({ 
@@ -3301,23 +3354,19 @@ Response JSON format:
     });
     
     ws.on('close', () => {
-      if (userId) {
-        clients.delete(userId);
-        
-        // Remove from any session room
-        if (currentSessionId) {
-          const room = sessionRooms.get(currentSessionId);
-          if (room) {
-            room.delete(userId);
-            if (room.size === 0) {
-              sessionRooms.delete(currentSessionId);
-            } else {
-              // Notify others in the session
-              broadcastToSession(currentSessionId, {
-                type: 'member:disconnected',
-                data: { userId }
-              });
-            }
+      clients.delete(userId);
+      
+      if (currentSessionId) {
+        const room = sessionRooms.get(currentSessionId);
+        if (room) {
+          room.delete(userId);
+          if (room.size === 0) {
+            sessionRooms.delete(currentSessionId);
+          } else {
+            broadcastToSession(currentSessionId, {
+              type: 'member:disconnected',
+              data: { userId }
+            });
           }
         }
       }
