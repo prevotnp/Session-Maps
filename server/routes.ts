@@ -239,6 +239,16 @@ const validateRequest = <T extends import("zod").ZodSchema>(schema: T, data: unk
   }
 };
 
+function safePath(baseDir: string, filename: string): string | null {
+  const sanitized = path.basename(filename);
+  const filePath = path.join(baseDir, sanitized);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(baseDir))) {
+    return null;
+  }
+  return resolved;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -869,8 +879,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve uploaded drone imagery files
   app.get("/api/drone-imagery/:filename", async (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(uploadDir, filename);
+    const filePath = safePath(uploadDir, req.params.filename);
+    if (!filePath) {
+      return res.status(400).json({ message: "Invalid filename" });
+    }
     
     try {
       if (fs.existsSync(filePath)) {
@@ -1086,8 +1098,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve 3D model files
   app.get("/api/drone-models/:filename", async (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(modelUploadDir, filename);
+    const filePath = safePath(modelUploadDir, req.params.filename);
+    if (!filePath) {
+      return res.status(400).json({ message: "Invalid filename" });
+    }
     
     try {
       if (fs.existsSync(filePath)) {
@@ -2604,8 +2618,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve waypoint photos
   app.get("/api/waypoint-photos/:filename", (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(waypointPhotoDir, filename);
+    const filePath = safePath(waypointPhotoDir, req.params.filename);
+    if (!filePath) {
+      return res.status(400).json({ message: "Invalid filename" });
+    }
     
     if (fs.existsSync(filePath)) {
       res.sendFile(filePath);
@@ -2708,8 +2724,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve route photos
   app.get("/api/route-photos/:filename", (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(routePhotoDir, filename);
+    const filePath = safePath(routePhotoDir, req.params.filename);
+    if (!filePath) {
+      return res.status(400).json({ message: "Invalid filename" });
+    }
     
     if (fs.existsSync(filePath)) {
       res.sendFile(filePath);
