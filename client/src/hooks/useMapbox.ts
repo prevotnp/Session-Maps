@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { escapeHtml } from '@/lib/escapeHtml';
-import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
+import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
 
 // Set mapbox access token
 const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -35,6 +35,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking']));
   const [isTerrain3D, setIsTerrain3D] = useState(false);
   const [showOutdoorPOIs, setShowOutdoorPOIs] = useState(false);
+  const [isTrailInfoLoading, setIsTrailInfoLoading] = useState(false);
   const [activeDroneImagery, setActiveDroneImagery] = useState<DroneImage | null>(null);
   const [activeDroneImages, setActiveDroneImages] = useState<Map<number, DroneImage>>(new Map());
   const [isDroneImageryLoading, setIsDroneImageryLoading] = useState(false);
@@ -1407,7 +1408,24 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       console.log('Map loaded successfully');
       // Start with Esri 3D imagery
       addEsriWorldImagery(map);
+      setIsTrailInfoLoading(true);
+      addBaseTrailLinesAndLabels(map);
       addTrailOverlay(map, 'hiking');
+
+      const checkTrailSourceLoaded = () => {
+        if (map.getSource('streets-labels') && map.isSourceLoaded('streets-labels')) {
+          setIsTrailInfoLoading(false);
+        }
+      };
+      const onSourceData = (e: any) => {
+        if (e.sourceId === 'streets-labels' && e.isSourceLoaded) {
+          setIsTrailInfoLoading(false);
+          map.off('sourcedata', onSourceData);
+        }
+      };
+      map.on('sourcedata', onSourceData);
+      setTimeout(checkTrailSourceLoaded, 2000);
+      setTimeout(() => { setIsTrailInfoLoading(false); map.off('sourcedata', onSourceData); }, 15000);
       
       // Enable 3D terrain by default
       if (!map.getSource('mapbox-dem')) {
@@ -1616,6 +1634,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
           });
         }
       }
+      addBaseTrailLinesAndLabels(map);
     });
   };
   
@@ -3861,6 +3880,8 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     isDrawRouteMode,
     enableDrawRouteMode,
     disableDrawRouteMode,
+    // Trail info loading
+    isTrailInfoLoading,
     // Outdoor POIs
     showOutdoorPOIs,
     setShowOutdoorPOIs

@@ -213,6 +213,8 @@ const MapView: React.FC<MapViewProps> = ({
     // Draw route mode
     enableDrawRouteMode,
     disableDrawRouteMode,
+    // Trail info loading
+    isTrailInfoLoading,
     // Outdoor POIs
     showOutdoorPOIs,
     setShowOutdoorPOIs
@@ -1684,6 +1686,16 @@ const MapView: React.FC<MapViewProps> = ({
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
             <span className="text-white font-medium">Loading drone imagery...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Trail Info Loading Indicator */}
+      {isTrailInfoLoading && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-dark/90 backdrop-blur-sm rounded-xl shadow-2xl border border-amber-500/30 px-6 py-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-white font-medium">Trail info loading...</span>
           </div>
         </div>
       )}

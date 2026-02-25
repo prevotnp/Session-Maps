@@ -1056,7 +1056,94 @@ export function removeTrailOverlay(map: mapboxgl.Map, type: TrailOverlayType): v
   }
 }
 
-// Add trail overlays and natural feature labels
+export function addBaseTrailLinesAndLabels(map: mapboxgl.Map): void {
+  const addLayers = () => {
+    try {
+      if (!map.getSource('streets-labels')) {
+        map.addSource('streets-labels', {
+          type: 'vector',
+          url: 'mapbox://mapbox.mapbox-streets-v8'
+        });
+      }
+
+      if (!map.getLayer('satellite-trails')) {
+        map.addLayer({
+          id: 'satellite-trails',
+          type: 'line',
+          source: 'streets-labels',
+          'source-layer': 'road',
+          filter: ['in', 'class', 'path', 'track', 'pedestrian'],
+          paint: {
+            'line-color': '#D2691E',
+            'line-width': { base: 1.5, stops: [[8, 0.8], [12, 2], [16, 3], [20, 4]] },
+            'line-dasharray': [2, 1],
+            'line-opacity': { stops: [[8, 0.5], [10, 0.7], [14, 0.85]] }
+          },
+          minzoom: 8
+        });
+      }
+
+      if (!map.getLayer('satellite-trail-labels')) {
+        map.addLayer({
+          id: 'satellite-trail-labels',
+          type: 'symbol',
+          source: 'streets-labels',
+          'source-layer': 'road',
+          filter: ['all', ['in', 'class', 'path', 'track', 'pedestrian'], ['has', 'name']],
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-size': { base: 1, stops: [[9, 10], [13, 12], [16, 14], [20, 16]] },
+            'symbol-placement': 'line',
+            'text-rotation-alignment': 'map',
+            'text-max-angle': 30
+          },
+          paint: {
+            'text-color': '#FFFFFF',
+            'text-halo-color': '#5D4037',
+            'text-halo-width': 2,
+            'text-opacity': { stops: [[9, 0.7], [12, 1.0]] }
+          },
+          minzoom: 9
+        });
+      }
+
+      if (!map.getLayer('water-labels')) {
+        map.addLayer({
+          id: 'water-labels',
+          type: 'symbol',
+          source: 'streets-labels',
+          'source-layer': 'natural_label',
+          filter: ['in', ['get', 'class'], ['literal', ['sea', 'ocean', 'bay', 'lake', 'reservoir', 'river', 'stream', 'canal', 'water']]],
+          minzoom: 8,
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': ['Open Sans Italic', 'Arial Unicode MS Regular'],
+            'text-size': { base: 1, stops: [[8, 10], [12, 12], [16, 14]] },
+            'text-letter-spacing': 0.1,
+            'text-max-width': 8
+          },
+          paint: {
+            'text-color': '#4FC3F7',
+            'text-halo-color': '#000000',
+            'text-halo-width': 1.5,
+            'text-opacity': 0.9
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Base trail lines error:', error);
+    }
+  };
+
+  if (map.isStyleLoaded()) {
+    addLayers();
+  } else {
+    map.once('load', addLayers);
+  }
+}
+
+// Add trail overlays (Waymarked Trails raster + base trail lines/labels)
 export function addTrailOverlays(map: mapboxgl.Map): void {
   const addLayers = () => {
     try {
@@ -1082,78 +1169,7 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
         });
       }
 
-      if (!map.getSource('streets-labels')) {
-        map.addSource('streets-labels', {
-          type: 'vector',
-          url: 'mapbox://mapbox.mapbox-streets-v8'
-        });
-      }
-
-      if (!map.getLayer('satellite-trails')) {
-        map.addLayer({
-          id: 'satellite-trails',
-          type: 'line',
-          source: 'streets-labels',
-          'source-layer': 'road',
-          filter: ['in', 'class', 'path', 'track', 'pedestrian'],
-          paint: {
-            'line-color': '#8B4513',
-            'line-width': { base: 1.5, stops: [[8, 0.5], [12, 1.5], [16, 2.5], [20, 3.5]] },
-            'line-dasharray': [2, 1],
-            'line-opacity': { stops: [[8, 0.3], [10, 0.5], [14, 0.7]] }
-          },
-          minzoom: 8
-        });
-      }
-
-      if (!map.getLayer('satellite-trail-labels')) {
-        map.addLayer({
-          id: 'satellite-trail-labels',
-          type: 'symbol',
-          source: 'streets-labels',
-          'source-layer': 'road',
-          filter: ['all', ['in', 'class', 'path', 'track', 'pedestrian'], ['has', 'name']],
-          layout: {
-            'text-field': ['get', 'name'],
-            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-            'text-size': { base: 1, stops: [[9, 9], [13, 11], [16, 13], [20, 15]] },
-            'symbol-placement': 'line',
-            'text-rotation-alignment': 'map'
-          },
-          paint: {
-            'text-color': '#654321',
-            'text-halo-color': '#FFFFFF',
-            'text-halo-width': 2,
-            'text-opacity': { stops: [[9, 0.6], [12, 0.9]] }
-          },
-          minzoom: 9
-        });
-      }
-
-      if (!map.getLayer('water-labels')) {
-        map.addLayer({
-          id: 'water-labels',
-          type: 'symbol',
-          source: 'streets-labels',
-          'source-layer': 'natural_label',
-          filter: ['in', ['get', 'class'], ['literal', ['sea', 'ocean', 'bay', 'lake', 'reservoir', 'river', 'stream', 'canal', 'water']]],
-          minzoom: 8,
-          layout: {
-            'text-field': ['get', 'name'],
-            'text-font': ['Open Sans Italic', 'Arial Unicode MS Regular'],
-            'text-size': { base: 1, stops: [[8, 10], [12, 12], [16, 14]] },
-            'text-anchor': 'center',
-            'text-allow-overlap': false,
-            'text-optional': true
-          },
-          paint: {
-            'text-color': '#A8D8FF',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1.5,
-            'text-opacity': 1
-          }
-        });
-      }
+      addBaseTrailLinesAndLabels(map);
     } catch (error) {
       console.error('Trail overlay error:', error);
     }
