@@ -409,38 +409,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Subscription routes
   app.post("/api/subscription/purchase", isAuthenticated, async (req, res) => {
-    const user = req.user as any;
-    const { planType } = req.body;
-    
-    if (!planType || !["monthly", "yearly"].includes(planType)) {
-      return res.status(400).json({ message: "Invalid plan type" });
-    }
-    
-    // Calculate subscription expiry date
-    const expiryDate = new Date();
-    if (planType === "monthly") {
-      expiryDate.setMonth(expiryDate.getMonth() + 1);
-    } else {
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-    }
-    
-    try {
-      const updatedUser = await dbStorage.updateUserSubscription(user.id, true, expiryDate);
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      return res.status(200).json({ 
-        message: "Subscription purchased successfully",
-        subscription: {
-          isSubscribed: true,
-          planType,
-          expiryDate
-        }
-      });
-    } catch (error) {
-      return res.status(500).json({ message: "Error purchasing subscription" });
-    }
+    return res.status(501).json({ 
+      message: "Subscriptions are coming soon. Payment integration is not yet available." 
+    });
   });
   
   app.get("/api/subscription/status", isAuthenticated, async (req, res) => {
