@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Layers } from 'lucide-react';
+import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Layers, X } from 'lucide-react';
 import { PiBirdFill } from 'react-icons/pi';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -160,8 +160,18 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   
                   {layersDropdownOpen && (
                     <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-2xl border border-white/20 z-50">
-                      <div className="flex items-center gap-3 p-3 border-b border-white/20 bg-white/5">
+                      <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
                         <span className="text-xs text-white font-medium">Map Layers</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLayersDropdownOpen(false);
+                          }}
+                          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                          aria-label="Close"
+                        >
+                          <X className="h-4 w-4 text-white/70" />
+                        </button>
                       </div>
 
                       <div 
@@ -259,8 +269,18 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   
                   {droneDropdownOpen && (
                     <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
-                      <div className="flex items-center gap-3 p-3 border-b border-white/20 bg-white/5">
+                      <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
                         <span className="text-xs text-white font-medium">Drone Layers</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDroneDropdownOpen(false);
+                          }}
+                          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                          aria-label="Close"
+                        >
+                          <X className="h-4 w-4 text-white/70" />
+                        </button>
                       </div>
                       {droneImages.length === 0 ? (
                         <div className="text-xs text-white p-3">No drone imagery available</div>
