@@ -1,5 +1,6 @@
 import mapboxgl, { LngLatBounds } from 'mapbox-gl';
 import { DroneImage } from '@shared/schema';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 // Map style constants
 export const MAP_STYLES = {
@@ -731,7 +732,7 @@ export function addLocationMarker(
   
   // Create popup with location name
   const popup = new mapboxgl.Popup({ offset: 25 })
-    .setHTML(`<h3>${name}</h3>`);
+    .setHTML(`<h3>${escapeHtml(name)}</h3>`);
   
   // Add marker to map
   const marker = new mapboxgl.Marker(el)

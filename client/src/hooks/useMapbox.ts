@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { escapeHtml } from '@/lib/escapeHtml';
 import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines } from '@/lib/mapUtils';
 
 // Set mapbox access token
@@ -519,7 +520,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       const popupContent = `
         <div style="padding: 12px; min-width: 180px;">
           <h3 id="waypoint-name-${waypointId}" style="margin: 0 0 8px 0; color: #1f2937; font-weight: 600; font-size: 14px;">
-            ${waypointName}
+            ${escapeHtml(waypointName)}
           </h3>
           <div style="font-size: 12px; color: #6b7280;">
             <div style="margin-bottom: 4px;">
@@ -532,7 +533,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
           </div>
           <div style="margin-top: 10px; display: flex; gap: 6px;">
             <button 
-              onclick="window.editRouteWaypoint('${waypointId}', '${waypointName.replace(/'/g, "\\'")}')" 
+              onclick="window.editRouteWaypoint('${waypointId}', '${escapeHtml(waypointName).replace(/'/g, "&#39;")}')" 
               style="flex: 1; padding: 6px 10px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;"
             >Edit</button>
             <button 
@@ -718,14 +719,14 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       
       const popup = new mapboxgl.Popup({ offset: 15, closeButton: true }).setHTML(`
         <div style="padding: 10px; background: white; color: black; min-width: 160px;">
-          <h3 id="edit-wp-name-${index}" style="margin: 0 0 8px 0; color: #4F46E5; font-size: 14px;">${waypoint.name}</h3>
+          <h3 id="edit-wp-name-${index}" style="margin: 0 0 8px 0; color: #4F46E5; font-size: 14px;">${escapeHtml(waypoint.name)}</h3>
           <p style="margin: 4px 0 10px 0; color: #666; font-size: 12px;">Drag to reposition</p>
           <div style="display: flex; gap: 6px;">
             <button 
               onclick="(function(){
                 var cb = window.__editWaypointCallbacks;
                 if(cb && cb.onEdit) {
-                  var newName = prompt('Enter new name:', '${waypoint.name}');
+                  var newName = prompt('Enter new name:', '${escapeHtml(waypoint.name)}');
                   if(newName) { cb.onEdit(${index}, newName); document.getElementById('edit-wp-name-${index}').textContent = newName; }
                 }
               })()"
@@ -1081,7 +1082,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         
         const popup = new mapboxgl.Popup({ offset: 15 }).setHTML(`
           <div style="padding: 8px; background: white; color: black;">
-            <h3 style="margin: 0 0 8px 0; color: #4F46E5;">${newWaypoint.name}</h3>
+            <h3 style="margin: 0 0 8px 0; color: #4F46E5;">${escapeHtml(newWaypoint.name)}</h3>
             <p style="margin: 4px 0; color: black;">Waypoint ${updatedWaypoints.length}</p>
             <p style="margin: 4px 0; color: black;">Elevation: ${elevation ? `${elevation}ft` : 'Unknown'}</p>
           </div>
@@ -1172,7 +1173,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       // Create popup content
       const popupContent = `
         <div style="padding: 8px; background: white; color: black; font-family: Arial, sans-serif;">
-          <h3 style="margin: 0 0 8px 0; font-weight: bold; color: black;">${newMarker.name}</h3>
+          <h3 style="margin: 0 0 8px 0; font-weight: bold; color: black;">${escapeHtml(newMarker.name)}</h3>
           ${newMarker.elevation !== null ? `<p style="margin: 4px 0; color: black;"><strong>Elevation:</strong> ${Math.round(newMarker.elevation)}m</p>` : ''}
           ${newMarker.straightLineDistance !== null ? `<p style="margin: 4px 0; color: black;"><strong>Distance:</strong> ${(newMarker.straightLineDistance / 1000).toFixed(2)}km</p>` : ''}
           ${newMarker.trailDistance !== null ? `<p style="margin: 4px 0; color: black;"><strong>Trail Distance:</strong> ${(newMarker.trailDistance / 1000).toFixed(2)}km</p>` : ''}
@@ -1732,7 +1733,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     // Create popup content
     const popupContent = `
       <div style="padding: 8px;">
-        <h3 style="margin: 0 0 8px 0; font-weight: bold;">${marker.name}</h3>
+        <h3 style="margin: 0 0 8px 0; font-weight: bold;">${escapeHtml(marker.name)}</h3>
         ${marker.elevation !== null ? `<p style="margin: 4px 0;"><strong>Elevation:</strong> ${Math.round(marker.elevation)}m</p>` : ''}
         ${marker.straightLineDistance !== null ? `<p style="margin: 4px 0;"><strong>Distance:</strong> ${(marker.straightLineDistance / 1000).toFixed(2)}km</p>` : ''}
         ${marker.trailDistance !== null ? `<p style="margin: 4px 0;"><strong>Trail Distance:</strong> ${(marker.trailDistance / 1000).toFixed(2)}km</p>` : ''}
@@ -1774,7 +1775,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       if (popup) {
         const updatedPopupContent = `
           <div style="padding: 8px; background: white; color: black; font-family: Arial, sans-serif;">
-            <h3 style="margin: 0 0 8px 0; font-weight: bold; color: black;">${newName}</h3>
+            <h3 style="margin: 0 0 8px 0; font-weight: bold; color: black;">${escapeHtml(newName)}</h3>
             ${marker.elevation !== null ? `<p style="margin: 4px 0; color: black;"><strong>Elevation:</strong> ${Math.round(marker.elevation)}m</p>` : ''}
             ${marker.straightLineDistance !== null ? `<p style="margin: 4px 0; color: black;"><strong>Distance:</strong> ${(marker.straightLineDistance / 1000).toFixed(2)}km</p>` : ''}
             ${marker.trailDistance !== null ? `<p style="margin: 4px 0; color: black;"><strong>Trail Distance:</strong> ${(marker.trailDistance / 1000).toFixed(2)}km</p>` : ''}
