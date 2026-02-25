@@ -5085,7 +5085,14 @@ Response JSON format:
         return res.status(403).json({ error: "Not authorized to update this activity" });
       }
       
-      const updatedActivity = await dbStorage.updateActivity(activityId, req.body);
+      const { name, notes, isPublic, activityType } = req.body;
+      const updateData: Record<string, any> = {};
+      if (name !== undefined) updateData.name = name;
+      if (notes !== undefined) updateData.notes = notes;
+      if (isPublic !== undefined) updateData.isPublic = isPublic;
+      if (activityType !== undefined) updateData.activityType = activityType;
+      
+      const updatedActivity = await dbStorage.updateActivity(activityId, updateData);
       res.json(updatedActivity);
     } catch (error) {
       console.error('Error updating activity:', error);
