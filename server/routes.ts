@@ -3238,6 +3238,12 @@ Response JSON format:
     const userId: number = (ws as any).authenticatedUserId;
     let currentSessionId: number | null = null;
     
+    (ws as any).isAlive = true;
+    
+    ws.on('pong', () => {
+      (ws as any).isAlive = true;
+    });
+    
     clients.set(userId, ws);
     
     ws.send(JSON.stringify({ 
@@ -3250,6 +3256,8 @@ Response JSON format:
     ws.on('message', async (message: string) => {
       try {
         const data = JSON.parse(message);
+        
+        (ws as any).isAlive = true;
         
         if (data.type === 'auth') {
           return;
@@ -3379,6 +3387,41 @@ Response JSON format:
         }
       }
     });
+  });
+
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws: any) => {
+      if (ws.isAlive === false) {
+        const deadUserId = ws.authenticatedUserId;
+        if (deadUserId) {
+          clients.delete(deadUserId);
+          
+          sessionRooms.forEach((room, sessionId) => {
+            if (room.has(deadUserId)) {
+              room.delete(deadUserId);
+              if (room.size === 0) {
+                sessionRooms.delete(sessionId);
+              } else {
+                broadcastToSession(sessionId, {
+                  type: 'member:disconnected',
+                  data: { userId: deadUserId }
+                });
+              }
+            }
+          });
+        }
+        
+        ws.terminate();
+        return;
+      }
+      
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+  
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
   });
 
   // Serve drone image file directly - uses Sharp for image conversion
