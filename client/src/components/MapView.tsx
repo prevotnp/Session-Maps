@@ -15,6 +15,7 @@ import DroneAdjustmentControls from './DroneAdjustmentControls';
 import { RouteSummaryPanel } from './RouteSummaryPanel';
 import LiveMapSessionModal from './modals/LiveMapSessionModal';
 import { useMapbox } from '@/hooks/useMapbox';
+import { useOutdoorPOIs } from '@/hooks/useOutdoorPOIs';
 import { useLocation } from '@/hooks/useLocation';
 import { useAuth } from '@/hooks/useAuth';
 import { DroneImage, Waypoint, Route } from '@shared/schema';
@@ -211,8 +212,13 @@ const MapView: React.FC<MapViewProps> = ({
     offlineSelectionInvalidDrag,
     // Draw route mode
     enableDrawRouteMode,
-    disableDrawRouteMode
+    disableDrawRouteMode,
+    // Outdoor POIs
+    showOutdoorPOIs,
+    setShowOutdoorPOIs
   } = useMapbox(mapContainerRef);
+  
+  useOutdoorPOIs(map, showOutdoorPOIs);
   
   // Sync activeDroneLayers with activeDroneImages from useMapbox
   useEffect(() => {
@@ -2223,6 +2229,8 @@ const MapView: React.FC<MapViewProps> = ({
         onOpenRecordActivity={() => setShowRecordingOverlay(true)}
         onOpenLiveMap={() => setShowLiveMapModal(true)}
         isRecordingActive={showRecordingOverlay}
+        showOutdoorPOIs={showOutdoorPOIs}
+        onToggleOutdoorPOIs={() => setShowOutdoorPOIs(!showOutdoorPOIs)}
       />
       
       {/* Location tracking is now handled by Mapbox directly with a blue pulsing dot */}

@@ -5434,5 +5434,160 @@ Response JSON format:
     }
   });
 
+  const outdoorPoiCache = new Map<string, { data: any; timestamp: number }>();
+  const POI_CACHE_TTL = 24 * 60 * 60 * 1000;
+  const POI_CACHE_MAX = 200;
+
+  function evictOldestCacheEntries() {
+    if (outdoorPoiCache.size <= POI_CACHE_MAX) return;
+    const entries = Array.from(outdoorPoiCache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, entries.length - POI_CACHE_MAX);
+    for (const [key] of toRemove) {
+      outdoorPoiCache.delete(key);
+    }
+  }
+
+  function buildOverpassQuery(south: number, west: number, north: number, east: number): string {
+    const bbox = `${south},${west},${north},${east}`;
+    return `[out:json][timeout:30];
+(
+  node["tourism"="camp_site"](${bbox});
+  way["tourism"="camp_site"](${bbox});
+  node["tourism"="camp_pitch"]["name"](${bbox});
+  node["tourism"="alpine_hut"](${bbox});
+  way["tourism"="alpine_hut"](${bbox});
+  node["tourism"="wilderness_hut"](${bbox});
+  way["tourism"="wilderness_hut"](${bbox});
+  node["amenity"="shelter"](${bbox});
+  way["amenity"="shelter"](${bbox});
+  node["amenity"="drinking_water"](${bbox});
+  node["natural"="spring"]["name"](${bbox});
+  node["highway"="trailhead"](${bbox});
+  node["information"="guidepost"]["name"](${bbox});
+  node["backcountry"="yes"](${bbox});
+);
+out center;`;
+  }
+
+  function classifyPoi(tags: Record<string, string>): { category: string; type: string } {
+    if (tags.tourism === 'camp_site' || tags.tourism === 'camp_pitch') {
+      if (tags.backcountry === 'yes' || tags.tents === 'yes') {
+        return { category: 'campsite', type: 'backcountry' };
+      }
+      return { category: 'campsite', type: tags.tourism === 'camp_pitch' ? 'camp_pitch' : 'camp_site' };
+    }
+    if (tags.tourism === 'alpine_hut') return { category: 'shelter', type: 'alpine_hut' };
+    if (tags.tourism === 'wilderness_hut') return { category: 'shelter', type: 'wilderness_hut' };
+    if (tags.amenity === 'shelter') return { category: 'shelter', type: 'shelter' };
+    if (tags.amenity === 'drinking_water') return { category: 'water', type: 'drinking_water' };
+    if (tags.natural === 'spring') return { category: 'water', type: 'spring' };
+    if (tags.highway === 'trailhead') return { category: 'trailhead', type: 'trailhead' };
+    if (tags.information === 'guidepost') return { category: 'guidepost', type: 'guidepost' };
+    if (tags.backcountry === 'yes') return { category: 'campsite', type: 'backcountry' };
+    return { category: 'other', type: 'unknown' };
+  }
+
+  function transformOsmElement(el: any): any {
+    const tags = el.tags || {};
+    const { category, type } = classifyPoi(tags);
+    const lat = el.lat ?? el.center?.lat;
+    const lon = el.lon ?? el.center?.lon;
+    if (lat == null || lon == null) return null;
+
+    return {
+      id: el.id,
+      lat,
+      lon,
+      category,
+      type,
+      name: tags.name || null,
+      elevation: tags.ele ? parseFloat(tags.ele) : null,
+      capacity: tags.capacity ? parseInt(tags.capacity, 10) : null,
+      operator: tags.operator || null,
+      fee: tags.fee === 'yes' ? true : tags.fee === 'no' ? false : null,
+      amenities: [
+        tags.drinking_water === 'yes' && 'drinking_water',
+        tags.toilets === 'yes' && 'toilets',
+        tags.shower === 'yes' && 'shower',
+        tags.fireplace === 'yes' && 'fireplace',
+        tags.bbq === 'yes' && 'bbq',
+        tags.picnic_table === 'yes' && 'picnic_table',
+        tags.internet_access === 'yes' && 'internet',
+      ].filter(Boolean),
+      website: tags.website || tags['contact:website'] || null,
+      phone: tags.phone || tags['contact:phone'] || null,
+      description: tags.description || null,
+      openingHours: tags.opening_hours || null,
+      access: tags.access || null,
+    };
+  }
+
+  async function fetchOverpass(query: string): Promise<any> {
+    const endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+    ];
+    for (const url of endpoints) {
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: AbortSignal.timeout(35000),
+        });
+        if (!resp.ok) continue;
+        return await resp.json();
+      } catch {
+        continue;
+      }
+    }
+    throw new Error('All Overpass API endpoints failed');
+  }
+
+  app.get("/api/outdoor-pois", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const south = parseFloat(req.query.south as string);
+      const west = parseFloat(req.query.west as string);
+      const north = parseFloat(req.query.north as string);
+      const east = parseFloat(req.query.east as string);
+
+      if ([south, west, north, east].some(isNaN)) {
+        return res.status(400).json({ error: "Missing or invalid bounding box parameters (south, west, north, east)" });
+      }
+
+      if (south < -90 || south > 90 || north < -90 || north > 90 ||
+          west < -180 || west > 180 || east < -180 || east > 180) {
+        return res.status(400).json({ error: "Coordinates out of valid range" });
+      }
+
+      if (north - south > 0.5 || east - west > 0.5) {
+        return res.status(400).json({ error: "Query area too large. Max ~0.5 degrees (~50km) per side." });
+      }
+
+      const cacheKey = `${south.toFixed(3)},${west.toFixed(3)},${north.toFixed(3)},${east.toFixed(3)}`;
+      const cached = outdoorPoiCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < POI_CACHE_TTL) {
+        return res.json(cached.data);
+      }
+
+      const query = buildOverpassQuery(south, west, north, east);
+      const osmData = await fetchOverpass(query);
+
+      const pois = (osmData.elements || [])
+        .map(transformOsmElement)
+        .filter((p: any) => p !== null);
+
+      const result = { pois, count: pois.length };
+
+      outdoorPoiCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      evictOldestCacheEntries();
+
+      return res.json(result);
+    } catch (error) {
+      console.error('Outdoor POI fetch error:', error);
+      return res.status(500).json({ error: "Failed to fetch outdoor POIs" });
+    }
+  });
+
   return httpServer;
 }

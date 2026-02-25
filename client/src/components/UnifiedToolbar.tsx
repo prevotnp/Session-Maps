@@ -27,6 +27,8 @@ interface UnifiedToolbarProps {
   onOpenRecordActivity?: () => void;
   onOpenLiveMap?: () => void;
   isRecordingActive?: boolean;
+  showOutdoorPOIs?: boolean;
+  onToggleOutdoorPOIs?: () => void;
 }
 
 const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({ 
@@ -42,7 +44,9 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   isOfflineSelectionMode,
   onOpenRecordActivity,
   onOpenLiveMap,
-  isRecordingActive = false
+  isRecordingActive = false,
+  showOutdoorPOIs = false,
+  onToggleOutdoorPOIs
 }) => {
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
   const [trailsDropdownOpen, setTrailsDropdownOpen] = useState(false);
@@ -216,6 +220,19 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                     </div>
                   )}
                 </div>
+                
+                {/* Outdoor POIs Toggle */}
+                <button 
+                  className={cn(
+                    "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                    showOutdoorPOIs && "active ring-2 ring-emerald-500"
+                  )}
+                  onClick={onToggleOutdoorPOIs}
+                  data-testid="button-outdoor-pois"
+                >
+                  <span className="text-lg">⛺</span>
+                  <span className="text-[10px] mt-0.5">Camps</span>
+                </button>
                 
                 {/* Drone Dropdown */}
                 <div className="relative" ref={droneDropdownRef}>
