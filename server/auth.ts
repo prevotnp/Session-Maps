@@ -157,13 +157,13 @@ export function setupAuth(app: Express) {
       const user = await dbStorage.getUserByEmail(email);
       
       if (!user) {
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({ message: "Invalid email or password" });
       }
       
       const passwordMatch = await comparePasswords(password, user.password);
       
       if (!passwordMatch) {
-        return res.status(401).json({ message: "Invalid password" });
+        return res.status(401).json({ message: "Invalid email or password" });
       }
       
       // Manual login without passport for now
