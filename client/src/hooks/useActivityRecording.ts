@@ -99,8 +99,49 @@ function persistRecordingState(state: RecordingState): void {
       lastSaveTime: Date.now()
     };
     localStorage.setItem(RECORDING_STORAGE_KEY, JSON.stringify(persisted));
-  } catch (err) {
-    console.warn('Failed to persist recording state:', err);
+  } catch (err: any) {
+    if (err?.name === 'QuotaExceededError' || err?.code === 22) {
+      console.warn('localStorage quota exceeded, reducing track point detail...');
+      try {
+        const reducedPoints = state.trackPoints.map(p => ({
+          latitude: Math.round(p.latitude * 1e6) / 1e6,
+          longitude: Math.round(p.longitude * 1e6) / 1e6,
+          altitude: p.altitude ? Math.round(p.altitude) : undefined,
+          timestamp: p.timestamp,
+          speed: p.speed ? Math.round(p.speed * 10) / 10 : undefined,
+        }));
+        
+        const reduced: PersistedRecordingState = {
+          isRecording: state.isRecording,
+          isPaused: state.isPaused,
+          activityType: state.activityType,
+          startTime: state.startTime!.toISOString(),
+          trackPoints: reducedPoints as any,
+          waypoints: state.waypoints,
+          lastSaveTime: Date.now()
+        };
+        localStorage.setItem(RECORDING_STORAGE_KEY, JSON.stringify(reduced));
+      } catch (retryErr) {
+        console.error('Failed to persist even reduced recording state:', retryErr);
+        try {
+          const lastPoints = state.trackPoints.slice(-1000);
+          const minimal = {
+            isRecording: state.isRecording,
+            isPaused: state.isPaused,
+            activityType: state.activityType,
+            startTime: state.startTime!.toISOString(),
+            trackPoints: lastPoints,
+            waypoints: state.waypoints,
+            lastSaveTime: Date.now()
+          };
+          localStorage.setItem(RECORDING_STORAGE_KEY, JSON.stringify(minimal));
+        } catch (finalErr) {
+          console.error('Cannot persist recording state at all:', finalErr);
+        }
+      }
+    } else {
+      console.warn('Failed to persist recording state:', err);
+    }
   }
 }
 
@@ -544,7 +585,6 @@ export function useActivityRecording() {
       timerRef.current = null;
     }
 
-    clearPersistedRecordingState();
     wakeLock.release();
 
     setState((prev) => ({
@@ -607,60 +647,86 @@ export function useActivityRecording() {
         isPublic,
       };
 
-      try {
-        const result = await saveActivityMutation.mutateAsync(activity);
-
-        clearPersistedRecordingState();
-        wakeLock.release();
-
+      const MAX_RETRIES = 3;
+      let lastError: any = null;
+      
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
-          const waypointsForRoute = currentState.waypoints.map(wp => ({
-            name: wp.name,
-            lat: wp.latitude,
-            lng: wp.longitude,
-            elevation: wp.altitude,
-          }));
+          const result = await saveActivityMutation.mutateAsync(activity);
 
-          const routeRes = await fetch(`/api/activities/${(result as any).id}/save-as-route`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ waypoints: waypointsForRoute }),
-          });
+          clearPersistedRecordingState();
+          wakeLock.release();
 
-          if (!routeRes.ok) {
-            console.warn('Route creation returned non-OK status:', routeRes.status);
+          try {
+            const waypointsForRoute = currentState.waypoints.map(wp => ({
+              name: wp.name,
+              lat: wp.latitude,
+              lng: wp.longitude,
+              elevation: wp.altitude,
+            }));
+
+            const routeRes = await fetch(`/api/activities/${(result as any).id}/save-as-route`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ waypoints: waypointsForRoute }),
+            });
+
+            if (!routeRes.ok) {
+              console.warn('Route creation returned non-OK status:', routeRes.status);
+            }
+
+            queryClient.invalidateQueries({ queryKey: ['/api/routes'] });
+          } catch (routeErr) {
+            console.warn('Activity saved but route creation failed:', routeErr);
           }
 
-          queryClient.invalidateQueries({ queryKey: ['/api/routes'] });
-        } catch (routeErr) {
-          console.warn('Activity saved but route creation failed:', routeErr);
-        }
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
 
-        if (watchIdRef.current !== null) {
-          navigator.geolocation.clearWatch(watchIdRef.current);
-          watchIdRef.current = null;
+          setState({
+            isRecording: false,
+            isPaused: false,
+            activityType: 'hike',
+            startTime: null,
+            trackPoints: [],
+            stats: initialStats,
+            currentPosition: null,
+            waypoints: [],
+          });
+          lastValidPointRef.current = null;
+          return result as Activity;
+          
+        } catch (error) {
+          lastError = error;
+          console.warn(`Save attempt ${attempt + 1}/${MAX_RETRIES} failed:`, error);
+          
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, attempt)));
+          }
         }
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-
-        setState({
-          isRecording: false,
-          isPaused: false,
-          activityType: 'hike',
-          startTime: null,
-          trackPoints: [],
-          stats: initialStats,
-          currentPosition: null,
-          waypoints: [],
-        });
-        lastValidPointRef.current = null;
-        return result as Activity;
-      } catch (error) {
-        return null;
       }
+      
+      console.error('All save attempts failed:', lastError);
+      toast({
+        title: 'Save failed',
+        description: 'Your activity is saved locally and will be retried. Please check your connection.',
+        variant: 'destructive',
+      });
+      
+      persistRecordingState({
+        ...currentState,
+        isRecording: true,
+        isPaused: true,
+      });
+      
+      return null;
     },
     [saveActivityMutation, toast, queryClient, wakeLock]
   );
