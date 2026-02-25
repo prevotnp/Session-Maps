@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Footprints, Bike, Snowflake } from 'lucide-react';
+import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Layers } from 'lucide-react';
 import { PiBirdFill } from 'react-icons/pi';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -49,8 +49,8 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   onToggleOutdoorPOIs
 }) => {
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
-  const [trailsDropdownOpen, setTrailsDropdownOpen] = useState(false);
-  const trailsDropdownRef = useRef<HTMLDivElement>(null);
+  const [layersDropdownOpen, setLayersDropdownOpen] = useState(false);
+  const layersDropdownRef = useRef<HTMLDivElement>(null);
   const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
   const [, navigate] = useLocation();
   const droneDropdownRef = useRef<HTMLDivElement>(null);
@@ -75,22 +75,20 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   }, [droneDropdownOpen]);
 
   useEffect(() => {
-    if (!trailsDropdownOpen) return;
+    if (!layersDropdownOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (trailsDropdownRef.current && !trailsDropdownRef.current.contains(e.target as Node)) {
-        setTrailsDropdownOpen(false);
+      if (layersDropdownRef.current && !layersDropdownRef.current.contains(e.target as Node)) {
+        setLayersDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [trailsDropdownOpen]);
+  }, [layersDropdownOpen]);
 
-  // Fetch available drone imagery
   const { data: droneImages = [] } = useQuery<DroneImage[]>({
     queryKey: ['/api/drone-images'],
   });
   
-  // Fetch 3D models for all drone images
   useEffect(() => {
     if (droneImages && droneImages.length > 0) {
       droneImages.forEach(async (image) => {
@@ -108,14 +106,13 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
     }
   }, [droneImages]);
   
-  // Fetch pending live map invites
   const { data: pendingInvites = [] } = useQuery<LiveMapInvite[]>({
     queryKey: ['/api/live-map-invites'],
   });
   
-  // Determine active base layer and topo state from activeLayers
   const isTopoActive = activeLayers.includes('topo');
   const activeBaseLayer = activeLayers.find(layer => ['esri-hd', 'esri-2d'].includes(layer)) || 'esri-hd';
+  const isLayersActive = isTopoActive || activeTrailOverlays.size > 0 || showOutdoorPOIs;
   
   const handleToggleLayer = (layerType: string) => {
     onToggleLayer(layerType);
@@ -129,14 +126,11 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
     )}>
       <div className="flex justify-center">
         <div className="relative max-w-full">
-          {/* Main Toolbar */}
           <div className="bg-dark/90 backdrop-blur-sm rounded-2xl px-2 py-2 flex items-end space-x-1 shadow-2xl border border-white/10">
             
-            {/* Explore Group */}
             <div className="flex flex-col items-center">
               <span className="text-[11px] text-white font-medium underline mb-px">Explore</span>
               <div className="flex items-center space-x-0.5">
-                {/* 2D/3D Toggle Button */}
                 <button 
                   className={cn(
                     "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
@@ -149,39 +143,47 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   <span className="text-[10px] mt-0.5">2D/3D</span>
                 </button>
                 
-                {/* Topo Button */}
-                <button 
-                  className={cn(
-                    "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
-                    isTopoActive && "active ring-2 ring-primary"
-                  )}
-                  onClick={() => handleToggleLayer('topo')}
-                  data-testid="button-topo"
-                >
-                  <Mountain className="h-5 w-5" />
-                  <span className="text-[10px] mt-0.5">Topo</span>
-                </button>
-                
-                {/* Trails Dropdown */}
-                <div className="relative" ref={trailsDropdownRef}>
+                <div className="relative" ref={layersDropdownRef}>
                   <button 
                     className={cn(
                       "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
-                      (trailsDropdownOpen || activeTrailOverlays.size > 0) && "active ring-2 ring-primary"
+                      (layersDropdownOpen || isLayersActive) && "active ring-2 ring-primary"
                     )}
-                    onClick={() => setTrailsDropdownOpen(!trailsDropdownOpen)}
-                    data-testid="button-trails"
+                    onClick={() => setLayersDropdownOpen(!layersDropdownOpen)}
+                    data-testid="button-layers"
                   >
-                    <Footprints className="h-5 w-5 text-red-400" />
+                    <Layers className="h-5 w-5 text-emerald-400" />
                     <span className="text-[10px] mt-0.5 flex items-center">
-                      Trails {trailsDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                      Layers {layersDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
                     </span>
                   </button>
                   
-                  {trailsDropdownOpen && (
+                  {layersDropdownOpen && (
                     <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-2xl border border-white/20 z-50">
                       <div className="flex items-center gap-3 p-3 border-b border-white/20 bg-white/5">
-                        <span className="text-xs text-white font-medium">Trail Overlays</span>
+                        <span className="text-xs text-white font-medium">Map Layers</span>
+                      </div>
+
+                      <div 
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors border-b border-white/10"
+                        onClick={() => handleToggleLayer('topo')}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          isTopoActive ? "border-transparent bg-amber-600" : "border-white/30"
+                        )}>
+                          {isTopoActive && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <Mountain className="h-4 w-4 text-amber-500" />
+                        <span className="text-sm text-white">Topo Contours</span>
+                      </div>
+
+                      <div className="px-3 pt-3 pb-1">
+                        <span className="text-xs text-white/50 font-medium uppercase tracking-wider">Trail Overlays</span>
                       </div>
                       <div>
                         {(Object.keys(TRAIL_OVERLAY_CONFIG) as TrailOverlayType[]).map((type, index, arr) => {
@@ -190,7 +192,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                           return (
                             <div 
                               key={type} 
-                              className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors ${index !== arr.length - 1 ? 'border-b border-white/10' : ''}`}
+                              className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors ${index !== arr.length - 1 ? 'border-b border-white/10' : ''}`}
                               onClick={() => onToggleLayer(`trails-${type}`)}
                             >
                               <div 
@@ -217,24 +219,28 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                           );
                         })}
                       </div>
+
+                      <div 
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors border-t border-white/10"
+                        onClick={onToggleOutdoorPOIs}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          showOutdoorPOIs ? "border-transparent bg-emerald-600" : "border-white/30"
+                        )}>
+                          {showOutdoorPOIs && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-base">⛺</span>
+                        <span className="text-sm text-white">Backcountry Camps & POIs</span>
+                      </div>
                     </div>
                   )}
                 </div>
                 
-                {/* Outdoor POIs Toggle */}
-                <button 
-                  className={cn(
-                    "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
-                    showOutdoorPOIs && "active ring-2 ring-emerald-500"
-                  )}
-                  onClick={onToggleOutdoorPOIs}
-                  data-testid="button-outdoor-pois"
-                >
-                  <span className="text-lg">⛺</span>
-                  <span className="text-[10px] mt-0.5">Camps</span>
-                </button>
-                
-                {/* Drone Dropdown */}
                 <div className="relative" ref={droneDropdownRef}>
                   <button 
                     className={cn(
@@ -317,7 +323,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   )}
                 </div>
                 
-                {/* Measure Button */}
                 <button 
                   className={cn(
                     "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
@@ -334,14 +339,11 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
             
             {!isRecordingActive && (
               <>
-                {/* Divider */}
                 <div className="h-12 w-px bg-white/20 self-center"></div>
                 
-                {/* Create Group */}
                 <div className="flex flex-col items-center">
                   <span className="text-[11px] text-white font-medium underline mb-px">Create</span>
                   <div className="flex items-center space-x-0.5">
-                    {/* Build Route Button */}
                     <button 
                       className="layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 hover:ring-2 hover:ring-primary/50"
                       onClick={onOpenRouteBuilder}
@@ -354,7 +356,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                       </span>
                     </button>
                     
-                    {/* Record Button */}
                     <button 
                       className="layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 hover:ring-2 hover:ring-green-500/50"
                       onClick={onOpenRecordActivity}
@@ -367,7 +368,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                       </span>
                     </button>
                     
-                    {/* Live Map Button */}
                     <div className="relative">
                       <button 
                         className="layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 hover:ring-2 hover:ring-green-500/50"
