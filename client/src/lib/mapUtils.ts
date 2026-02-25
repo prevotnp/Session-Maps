@@ -1098,11 +1098,11 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
           filter: ['in', 'class', 'path', 'track', 'pedestrian'],
           paint: {
             'line-color': '#8B4513',
-            'line-width': { base: 1.5, stops: [[10, 1], [16, 2], [20, 3]] },
+            'line-width': { base: 1.5, stops: [[8, 0.5], [12, 1.5], [16, 2.5], [20, 3.5]] },
             'line-dasharray': [2, 1],
-            'line-opacity': 0.6
+            'line-opacity': { stops: [[8, 0.3], [10, 0.5], [14, 0.7]] }
           },
-          minzoom: 12
+          minzoom: 8
         });
       }
 
@@ -1116,7 +1116,7 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
           layout: {
             'text-field': ['get', 'name'],
             'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-            'text-size': { base: 1, stops: [[13, 10], [16, 12], [20, 14]] },
+            'text-size': { base: 1, stops: [[9, 9], [13, 11], [16, 13], [20, 15]] },
             'symbol-placement': 'line',
             'text-rotation-alignment': 'map'
           },
@@ -1124,9 +1124,9 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
             'text-color': '#654321',
             'text-halo-color': '#FFFFFF',
             'text-halo-width': 2,
-            'text-opacity': 0.9
+            'text-opacity': { stops: [[9, 0.6], [12, 0.9]] }
           },
-          minzoom: 12
+          minzoom: 9
         });
       }
 
