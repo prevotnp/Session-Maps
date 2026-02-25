@@ -49,12 +49,24 @@ interface OriginalWaypoint {
   elevation: number | null;
 }
 
+type TrailProfile = 'foot-hiking' | 'foot-walking' | 'cycling-regular' | 'cycling-mountain' | 'cycling-road' | 'cycling-electric';
+
+const TRAIL_PROFILE_OPTIONS: { value: TrailProfile; label: string; icon: string }[] = [
+  { value: 'foot-hiking', label: 'Hiking', icon: '🥾' },
+  { value: 'foot-walking', label: 'Walking', icon: '🚶' },
+  { value: 'cycling-regular', label: 'Cycling', icon: '🚴' },
+  { value: 'cycling-mountain', label: 'Mountain Bike', icon: '🚵' },
+  { value: 'cycling-road', label: 'Road Bike', icon: '🚲' },
+  { value: 'cycling-electric', label: 'E-Bike', icon: '⚡' },
+];
+
 interface RouteBuilderState {
   name: string;
   description: string;
   selectedWaypoints: number[];
   isPublic: boolean;
-  routingMode: 'direct' | 'road' | 'rivers' | 'draw';
+  routingMode: 'direct' | 'road' | 'trail' | 'draw';
+  trailProfile: TrailProfile;
   pathCoordinates: [number, number][];
   waypointCoordinates: OriginalWaypoint[];
   totalDistance: number;
@@ -87,6 +99,7 @@ export default function RouteBuilderModal({
     selectedWaypoints: [],
     isPublic: false,
     routingMode: 'direct',
+    trailProfile: 'foot-hiking',
     pathCoordinates: [],
     waypointCoordinates: [],
     totalDistance: 0,
@@ -256,7 +269,7 @@ export default function RouteBuilderModal({
         : [];
       
       // Preserve the original routing mode from the saved route
-      const savedRoutingMode = editingRoute.routingMode as 'direct' | 'road' | 'rivers' | 'draw' | undefined;
+      const savedRoutingMode = editingRoute.routingMode === 'rivers' ? 'trail' : editingRoute.routingMode as 'direct' | 'road' | 'trail' | 'draw' | undefined;
       const routingMode = savedRoutingMode || 'direct';
       
       setRouteState({
@@ -265,6 +278,7 @@ export default function RouteBuilderModal({
         selectedWaypoints: [],
         isPublic: editingRoute.isPublic ?? false,
         routingMode: routingMode,
+        trailProfile: ((editingRoute as any).trailProfile as TrailProfile) || 'foot-hiking',
         pathCoordinates: pathCoordinates,
         waypointCoordinates: waypointCoordinates,
         totalDistance: parseFloat(String(editingRoute.totalDistance)),
@@ -513,13 +527,13 @@ export default function RouteBuilderModal({
 
         // Display route on map - skip fitBounds to allow user to pan and add more waypoints
         displayRouteOnMap(pathCoordinates, waypointsForDisplay, true);
-      } else if (routeState.routingMode === 'rivers') {
-        console.log('Calculating hiking trail route via ORS...');
+      } else if (routeState.routingMode === 'trail') {
+        console.log(`Calculating ${routeState.trailProfile} trail route via ORS...`);
 
-        const trailResponse = await fetch('/api/ors/hiking-route', {
+        const trailResponse = await fetch('/api/ors/route', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ waypoints: coordinates })
+          body: JSON.stringify({ waypoints: coordinates, profile: routeState.trailProfile })
         });
 
         const trailData = await trailResponse.json();
@@ -695,7 +709,7 @@ export default function RouteBuilderModal({
       toast({
         title: "Route generated!",
         description: `${waypointCoordinates.length} waypoints placed. ${
-          routeState.routingMode === 'rivers' ? 'Calculating trail route...' :
+          routeState.routingMode === 'trail' ? 'Calculating trail route...' :
           routeState.routingMode === 'road' ? 'Calculating road route...' :
           'Calculating route...'
         }`,
@@ -953,6 +967,7 @@ export default function RouteBuilderModal({
       selectedWaypoints: [],
       isPublic: false,
       routingMode: 'direct',
+      trailProfile: 'foot-hiking',
       pathCoordinates: [],
       waypointCoordinates: [],
       totalDistance: 0,
@@ -998,7 +1013,7 @@ export default function RouteBuilderModal({
     if (routeState.selectedWaypoints.length >= 2 || temporaryWaypoints.length >= 2) {
       calculateOptimizedRoute();
     }
-  }, [routeState.selectedWaypoints, routeState.routingMode, temporaryWaypoints, calculateOptimizedRoute, editingRoute]);
+  }, [routeState.selectedWaypoints, routeState.routingMode, routeState.trailProfile, temporaryWaypoints, calculateOptimizedRoute, editingRoute]);
 
 
   // Handle draw mode path changes - recalculates distance along the actual path
@@ -1137,12 +1152,12 @@ export default function RouteBuilderModal({
                 <button
                   type="button"
                   className={`p-2 border rounded text-xs font-medium transition-colors ${
-                    routeState.routingMode === 'rivers'
+                    routeState.routingMode === 'trail'
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-background hover:bg-muted border-border'
                   }`}
-                  onClick={() => setRouteState(prev => ({ ...prev, routingMode: 'rivers' }))}
-                  data-testid="button-routing-rivers"
+                  onClick={() => setRouteState(prev => ({ ...prev, routingMode: 'trail' }))}
+                  data-testid="button-routing-trail"
                 >
                   <Mountain className="h-3 w-3 mx-auto mb-0.5" />
                   <span>Trails</span>
@@ -1161,6 +1176,29 @@ export default function RouteBuilderModal({
                   <span>Draw</span>
                 </button>
               </div>
+              {routeState.routingMode === 'trail' && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Activity Type</Label>
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    {TRAIL_PROFILE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`p-1.5 border rounded text-[11px] font-medium transition-colors flex items-center justify-center gap-1 ${
+                          routeState.trailProfile === option.value
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                        onClick={() => setRouteState(prev => ({ ...prev, trailProfile: option.value }))}
+                        data-testid={`button-trail-profile-${option.value}`}
+                      >
+                        <span>{option.icon}</span>
+                        <span>{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {!editingRoute && (
@@ -1194,7 +1232,7 @@ export default function RouteBuilderModal({
                       value={aiPrompt}
                       onChange={(e) => setAiPrompt(e.target.value)}
                       placeholder={
-                        routeState.routingMode === 'rivers'
+                        routeState.routingMode === 'trail'
                           ? "e.g., Build me a hiking loop around Jenny Lake in Grand Teton National Park, starting from the South Jenny Lake trailhead"
                           : routeState.routingMode === 'road'
                           ? "e.g., Create a scenic driving route from Jackson to Yellowstone through the Teton Pass"
@@ -1212,7 +1250,7 @@ export default function RouteBuilderModal({
                     />
 
                     <div className="text-[10px] text-muted-foreground">
-                      {routeState.routingMode === 'rivers' && "Trail mode: AI will place waypoints near trail junctions. The trail router will snap to actual trails."}
+                      {routeState.routingMode === 'trail' && "Trail mode: AI will place waypoints near trail junctions. The trail router will snap to actual trails."}
                       {routeState.routingMode === 'road' && "Road mode: AI will place waypoints at key intersections. Mapbox will route on real roads."}
                       {routeState.routingMode === 'direct' && "Direct mode: AI will place waypoints along the route. Lines will be straight between points."}
                       {routeState.routingMode === 'draw' && "Draw mode: AI will place waypoints as a starting draft. You can reshape the path by dragging."}

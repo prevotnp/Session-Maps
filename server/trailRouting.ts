@@ -19,6 +19,8 @@ interface RouteResult {
   distance: number; // meters
   success: boolean;
   message?: string;
+  elevationGain?: number; // meters
+  elevationLoss?: number; // meters
 }
 
 // In-memory cache for trail graphs by region
@@ -43,23 +45,60 @@ const OVERPASS_ENDPOINTS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ];
 
-// Fetch trail data from OpenStreetMap Overpass API with retry logic
-async function fetchOSMTrails(minLat: number, minLon: number, maxLat: number, maxLon: number): Promise<any> {
-  // Query for hiking trails, footways, paths, and tracks
-  const query = `
+export type ActivityProfile = 'foot-hiking' | 'foot-walking' | 'cycling-regular' | 'cycling-mountain' | 'cycling-road' | 'cycling-electric';
+
+export const ALLOWED_PROFILES: ActivityProfile[] = [
+  'foot-hiking',
+  'foot-walking',
+  'cycling-regular',
+  'cycling-mountain',
+  'cycling-road',
+  'cycling-electric'
+];
+
+function buildOverpassQuery(minLat: number, minLon: number, maxLat: number, maxLon: number, profile: ActivityProfile = 'foot-hiking'): string {
+  const bbox = `${minLat},${minLon},${maxLat},${maxLon}`;
+
+  if (profile.startsWith('cycling')) {
+    return `
+      [out:json][timeout:90];
+      (
+        way["highway"="cycleway"](${bbox});
+        way["highway"="path"]["bicycle"!="no"](${bbox});
+        way["highway"="track"]["bicycle"!="no"](${bbox});
+        way["highway"="residential"](${bbox});
+        way["highway"="unclassified"](${bbox});
+        way["highway"="tertiary"](${bbox});
+        way["highway"="secondary"](${bbox});
+        way["highway"="service"](${bbox});
+        way["route"="bicycle"](${bbox});
+        way["cycleway"](${bbox});
+      );
+      out body;
+      >;
+      out skel qt;
+    `;
+  }
+
+  return `
     [out:json][timeout:90];
     (
-      way["highway"="path"](${minLat},${minLon},${maxLat},${maxLon});
-      way["highway"="footway"](${minLat},${minLon},${maxLat},${maxLon});
-      way["highway"="track"](${minLat},${minLon},${maxLat},${maxLon});
-      way["highway"="bridleway"](${minLat},${minLon},${maxLat},${maxLon});
-      way["route"="hiking"](${minLat},${minLon},${maxLat},${maxLon});
-      way["sac_scale"](${minLat},${minLon},${maxLat},${maxLon});
+      way["highway"="path"](${bbox});
+      way["highway"="footway"](${bbox});
+      way["highway"="track"](${bbox});
+      way["highway"="bridleway"](${bbox});
+      way["route"="hiking"](${bbox});
+      way["sac_scale"](${bbox});
     );
     out body;
     >;
     out skel qt;
   `;
+}
+
+// Fetch trail data from OpenStreetMap Overpass API with retry logic
+async function fetchOSMTrails(minLat: number, minLon: number, maxLat: number, maxLon: number, profile: ActivityProfile = 'foot-hiking'): Promise<any> {
+  const query = buildOverpassQuery(minLat, minLon, maxLat, maxLon, profile);
 
   console.log(`Fetching OSM trails for bounds: ${minLat},${minLon} to ${maxLat},${maxLon}`);
   
@@ -435,35 +474,94 @@ function dijkstra(graph: TrailGraph, startId: string, endId: string): { path: st
   return null;
 }
 
+async function fetchElevationForCoordinates(coordinates: [number, number][]): Promise<{ elevationGain: number; elevationLoss: number }> {
+  if (coordinates.length < 2) {
+    return { elevationGain: 0, elevationLoss: 0 };
+  }
+
+  const maxPointsPerRequest = 100;
+  const sampled: [number, number][] = [];
+
+  if (coordinates.length <= maxPointsPerRequest) {
+    sampled.push(...coordinates);
+  } else {
+    const step = (coordinates.length - 1) / (maxPointsPerRequest - 1);
+    for (let i = 0; i < maxPointsPerRequest; i++) {
+      sampled.push(coordinates[Math.round(i * step)]);
+    }
+  }
+
+  const latitudes = sampled.map(c => c[1].toFixed(6)).join(',');
+  const longitudes = sampled.map(c => c[0].toFixed(6)).join(',');
+
+  const url = `https://api.open-meteo.com/v1/elevation?latitude=${latitudes}&longitude=${longitudes}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.log(`Open-Meteo elevation API error: ${response.status}`);
+      return { elevationGain: 0, elevationLoss: 0 };
+    }
+
+    const data = await response.json();
+    const elevations: number[] = data.elevation;
+
+    if (!elevations || elevations.length < 2) {
+      return { elevationGain: 0, elevationLoss: 0 };
+    }
+
+    let elevationGain = 0;
+    let elevationLoss = 0;
+
+    for (let i = 1; i < elevations.length; i++) {
+      const diff = elevations[i] - elevations[i - 1];
+      if (diff > 0) {
+        elevationGain += diff;
+      } else {
+        elevationLoss += Math.abs(diff);
+      }
+    }
+
+    return {
+      elevationGain: Math.round(elevationGain),
+      elevationLoss: Math.round(elevationLoss)
+    };
+  } catch (error) {
+    console.log(`Elevation fetch failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return { elevationGain: 0, elevationLoss: 0 };
+  }
+}
+
 // Get or create trail graph for a region
-export async function getTrailGraph(minLat: number, minLon: number, maxLat: number, maxLon: number): Promise<TrailGraph> {
-  // Round bounds to create cache key (0.1 degree grid)
-  const cacheKey = `${Math.floor(minLat * 10)}_${Math.floor(minLon * 10)}_${Math.ceil(maxLat * 10)}_${Math.ceil(maxLon * 10)}`;
+export async function getTrailGraph(minLat: number, minLon: number, maxLat: number, maxLon: number, profile: ActivityProfile = 'foot-hiking'): Promise<TrailGraph> {
+  const profileKey = profile.startsWith('cycling') ? 'cycling' : 'hiking';
+  const cacheKey = `${profileKey}_${Math.floor(minLat * 10)}_${Math.floor(minLon * 10)}_${Math.ceil(maxLat * 10)}_${Math.ceil(maxLon * 10)}`;
   
-  // Check cache
   const cached = trailGraphCache.get(cacheKey);
   if (cached) {
-    // Refresh if older than 24 hours
     const age = Date.now() - cached.lastUpdated.getTime();
     if (age < 24 * 60 * 60 * 1000) {
-      console.log(`Using cached trail graph: ${cached.nodes.size} nodes`);
+      console.log(`Using cached trail graph (${profileKey}): ${cached.nodes.size} nodes`);
       return cached;
     }
   }
 
-  // Fetch from OSM
-  console.log('Fetching fresh trail data from OpenStreetMap...');
-  const osmData = await fetchOSMTrails(minLat, minLon, maxLat, maxLon);
+  console.log(`Fetching fresh trail data from OpenStreetMap for profile: ${profile}...`);
+  const osmData = await fetchOSMTrails(minLat, minLon, maxLat, maxLon, profile);
   const graph = buildGraphFromOSM(osmData, { minLat, maxLat, minLon, maxLon });
   
-  // Cache it
   trailGraphCache.set(cacheKey, graph);
   
   return graph;
 }
 
 // Calculate shortest path between waypoints on trails
-export async function calculateTrailRoute(waypoints: [number, number][]): Promise<RouteResult> {
+export async function calculateTrailRoute(waypoints: [number, number][], profile: ActivityProfile = 'foot-hiking'): Promise<RouteResult> {
   if (waypoints.length < 2) {
     return { coordinates: [], distance: 0, success: false, message: 'Need at least 2 waypoints' };
   }
@@ -486,7 +584,7 @@ export async function calculateTrailRoute(waypoints: [number, number][]): Promis
 
   try {
     // Get trail graph for the region
-    const graph = await getTrailGraph(minLat, minLon, maxLat, maxLon);
+    const graph = await getTrailGraph(minLat, minLon, maxLat, maxLon, profile);
     
     if (graph.nodes.size === 0) {
       return { 
@@ -595,10 +693,14 @@ export async function calculateTrailRoute(waypoints: [number, number][]): Promis
       }
     }
 
+    const elevation = await fetchElevationForCoordinates(fullPath);
+
     return {
       coordinates: fullPath,
       distance: totalDistance,
-      success: true
+      success: true,
+      elevationGain: elevation.elevationGain,
+      elevationLoss: elevation.elevationLoss
     };
 
   } catch (error) {

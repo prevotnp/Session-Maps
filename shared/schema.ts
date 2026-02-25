@@ -151,7 +151,7 @@ export const routes = pgTable("routes", {
   elevationGain: decimal("elevation_gain", { precision: 10, scale: 2 }), // in meters
   elevationLoss: decimal("elevation_loss", { precision: 10, scale: 2 }), // in meters
   estimatedTime: integer("estimated_time"), // in minutes
-  routingMode: text("routing_mode").notNull().default("direct"), // 'direct', 'road', or 'rivers'
+  routingMode: text("routing_mode").notNull().default("direct"), // 'direct', 'road', or 'trail' (legacy: 'rivers' treated as 'trail')
   cesiumTilesetId: integer("cesium_tileset_id").references(() => cesium3dTilesets.id, { onDelete: 'set null' }),
   isPublic: boolean("is_public").default(false),
   createdAt: timestamp("created_at").defaultNow(),

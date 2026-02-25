@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio } from 'lucide-react';
+import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Footprints, Bike, Snowflake } from 'lucide-react';
 import { PiBirdFill } from 'react-icons/pi';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { DroneImage } from '@shared/schema';
+import { TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
 
 interface LiveMapInvite {
   id: number;
@@ -15,6 +16,7 @@ interface LiveMapInvite {
 interface UnifiedToolbarProps {
   onToggleLayer: (layerType: string) => void;
   activeLayers: string[];
+  activeTrailOverlays: Set<TrailOverlayType>;
   onStartOfflineSelection: () => void;
   onToggleDroneLayer: (droneImageId: number, isActive: boolean) => void;
   activeDroneLayers: Set<number>;
@@ -30,6 +32,7 @@ interface UnifiedToolbarProps {
 const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({ 
   onToggleLayer,
   activeLayers,
+  activeTrailOverlays,
   onStartOfflineSelection, 
   onToggleDroneLayer, 
   activeDroneLayers,
@@ -42,6 +45,8 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   isRecordingActive = false
 }) => {
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
+  const [trailsDropdownOpen, setTrailsDropdownOpen] = useState(false);
+  const trailsDropdownRef = useRef<HTMLDivElement>(null);
   const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
   const [, navigate] = useLocation();
   const droneDropdownRef = useRef<HTMLDivElement>(null);
@@ -64,6 +69,17 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [droneDropdownOpen]);
+
+  useEffect(() => {
+    if (!trailsDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (trailsDropdownRef.current && !trailsDropdownRef.current.contains(e.target as Node)) {
+        setTrailsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [trailsDropdownOpen]);
 
   // Fetch available drone imagery
   const { data: droneImages = [] } = useQuery<DroneImage[]>({
@@ -141,6 +157,65 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   <Mountain className="h-5 w-5" />
                   <span className="text-[10px] mt-0.5">Topo</span>
                 </button>
+                
+                {/* Trails Dropdown */}
+                <div className="relative" ref={trailsDropdownRef}>
+                  <button 
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 min-w-[44px] min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      (trailsDropdownOpen || activeTrailOverlays.size > 0) && "active ring-2 ring-primary"
+                    )}
+                    onClick={() => setTrailsDropdownOpen(!trailsDropdownOpen)}
+                    data-testid="button-trails"
+                  >
+                    <Footprints className="h-5 w-5 text-red-400" />
+                    <span className="text-[10px] mt-0.5 flex items-center">
+                      Trails {trailsDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                    </span>
+                  </button>
+                  
+                  {trailsDropdownOpen && (
+                    <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-2xl border border-white/20 z-50">
+                      <div className="flex items-center gap-3 p-3 border-b border-white/20 bg-white/5">
+                        <span className="text-xs text-white font-medium">Trail Overlays</span>
+                      </div>
+                      <div>
+                        {(Object.keys(TRAIL_OVERLAY_CONFIG) as TrailOverlayType[]).map((type, index, arr) => {
+                          const config = TRAIL_OVERLAY_CONFIG[type];
+                          const isActive = activeTrailOverlays.has(type);
+                          return (
+                            <div 
+                              key={type} 
+                              className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5 transition-colors ${index !== arr.length - 1 ? 'border-b border-white/10' : ''}`}
+                              onClick={() => onToggleLayer(`trails-${type}`)}
+                            >
+                              <div 
+                                className={cn(
+                                  "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                                  isActive 
+                                    ? "border-transparent" 
+                                    : "border-white/30"
+                                )}
+                                style={isActive ? { backgroundColor: config.color, borderColor: config.color } : undefined}
+                              >
+                                {isActive && (
+                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+                              <div 
+                                className="w-3 h-1 rounded-full" 
+                                style={{ backgroundColor: config.color }}
+                              />
+                              <span className="text-sm text-white flex-1">{config.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 
                 {/* Drone Dropdown */}
                 <div className="relative" ref={droneDropdownRef}>

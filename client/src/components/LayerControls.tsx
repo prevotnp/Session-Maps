@@ -1,21 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { Globe, Mountain, Cloud, MapPin, Satellite, Square, Box, Map, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { Globe, Mountain, Cloud, MapPin, Satellite, Square, Box, Map, Eye, ChevronDown, ChevronUp, Footprints } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { DroneImage } from '@shared/schema';
+import { TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
 
 interface LayerControlsProps {
   onToggleLayer: (layerType: string) => void;
   onOpenOfflineModal: () => void;
   onToggleDroneLayer: (droneImageId: number, isActive: boolean) => void;
   activeDroneLayers: Set<number>;
+  activeTrailOverlays?: Set<TrailOverlayType>;
 }
 
-const LayerControls: React.FC<LayerControlsProps> = ({ onToggleLayer, onOpenOfflineModal, onToggleDroneLayer, activeDroneLayers }) => {
+const LayerControls: React.FC<LayerControlsProps> = ({ onToggleLayer, onOpenOfflineModal, onToggleDroneLayer, activeDroneLayers, activeTrailOverlays = new Set(['hiking']) }) => {
   const [activeLayer, setActiveLayer] = useState('esri-hd');
   const [propertyLinesVisible, setPropertyLinesVisible] = useState(false);
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
+  const [trailsOpen, setTrailsOpen] = useState(false);
+  const trailsRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
   const droneDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -174,6 +178,55 @@ const LayerControls: React.FC<LayerControlsProps> = ({ onToggleLayer, onOpenOffl
             )}
           </div>
           
+          {/* Trails Dropdown */}
+          <div className="relative" ref={trailsRef}>
+            <button 
+              className={cn(
+                "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 flex flex-col items-center border-2 border-transparent",
+                (trailsOpen || activeTrailOverlays.size > 0) && "active"
+              )}
+              onClick={() => setTrailsOpen(!trailsOpen)}
+            >
+              <Footprints className="h-5 w-5" />
+              <span className="text-xs mt-1 flex items-center">Trails {trailsOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}</span>
+            </button>
+            
+            {trailsOpen && (
+              <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-dark/90 backdrop-blur-sm rounded-lg p-3 w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-lg border border-white/10 z-50">
+                <div className="text-xs text-white/70 font-medium mb-2 pb-2 border-b border-white/10">Trail Overlays</div>
+                <div className="space-y-1">
+                  {(Object.keys(TRAIL_OVERLAY_CONFIG) as TrailOverlayType[]).map((type) => {
+                    const config = TRAIL_OVERLAY_CONFIG[type];
+                    const isActive = activeTrailOverlays.has(type);
+                    return (
+                      <div 
+                        key={type} 
+                        className="flex items-center gap-2 p-1.5 rounded cursor-pointer hover:bg-white/10 transition-colors"
+                        onClick={() => onToggleLayer(`trails-${type}`)}
+                      >
+                        <div 
+                          className={cn(
+                            "w-4 h-4 rounded border-2 flex items-center justify-center",
+                            isActive ? "border-transparent" : "border-white/30"
+                          )}
+                          style={isActive ? { backgroundColor: config.color, borderColor: config.color } : undefined}
+                        >
+                          {isActive && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="w-3 h-1 rounded-full" style={{ backgroundColor: config.color }} />
+                        <span className="text-xs text-white">{config.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button 
             className={cn(
               "layer-toggle-btn bg-dark-gray/50 rounded-full p-2 flex flex-col items-center border-2 border-transparent",

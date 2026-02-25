@@ -954,6 +954,108 @@ export function switchToEsriImagery(map: mapboxgl.Map): void {
   });
 }
 
+export type TrailOverlayType = 'hiking' | 'cycling' | 'mtb' | 'skating' | 'riding' | 'skiing';
+
+export const TRAIL_OVERLAY_CONFIG: Record<TrailOverlayType, {
+  label: string;
+  tileUrl: string;
+  color: string;
+  icon: string;
+}> = {
+  hiking: {
+    label: 'Hiking',
+    tileUrl: 'https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png',
+    color: '#e74c3c',
+    icon: 'footprints',
+  },
+  cycling: {
+    label: 'Cycling',
+    tileUrl: 'https://tile.waymarkedtrails.org/cycling/{z}/{x}/{y}.png',
+    color: '#3498db',
+    icon: 'bike',
+  },
+  mtb: {
+    label: 'Mountain Biking',
+    tileUrl: 'https://tile.waymarkedtrails.org/mtb/{z}/{x}/{y}.png',
+    color: '#e67e22',
+    icon: 'mountain',
+  },
+  skating: {
+    label: 'Skating',
+    tileUrl: 'https://tile.waymarkedtrails.org/skating/{z}/{x}/{y}.png',
+    color: '#9b59b6',
+    icon: 'circle-dot',
+  },
+  riding: {
+    label: 'Horse Riding',
+    tileUrl: 'https://tile.waymarkedtrails.org/riding/{z}/{x}/{y}.png',
+    color: '#8B4513',
+    icon: 'horse',
+  },
+  skiing: {
+    label: 'Skiing',
+    tileUrl: 'https://tile.waymarkedtrails.org/slopes/{z}/{x}/{y}.png',
+    color: '#1abc9c',
+    icon: 'snowflake',
+  },
+};
+
+export function addTrailOverlay(map: mapboxgl.Map, type: TrailOverlayType): void {
+  const config = TRAIL_OVERLAY_CONFIG[type];
+  const sourceId = `waymarked-trails-${type}`;
+  const layerId = `waymarked-trails-${type}-overlay`;
+
+  const addLayer = () => {
+    try {
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'raster',
+          tiles: [config.tileUrl],
+          tileSize: 256,
+          attribution: '© <a href="https://waymarkedtrails.org" target="_blank">Waymarked Trails</a> (CC-BY-SA)',
+          maxzoom: 18,
+        });
+      }
+
+      if (!map.getLayer(layerId)) {
+        map.addLayer({
+          id: layerId,
+          type: 'raster',
+          source: sourceId,
+          paint: {
+            'raster-opacity': 0.85,
+          },
+          minzoom: 8,
+        });
+      }
+    } catch (error) {
+      console.error(`Trail overlay error (${type}):`, error);
+    }
+  };
+
+  if (map.isStyleLoaded()) {
+    addLayer();
+  } else {
+    map.once('load', addLayer);
+  }
+}
+
+export function removeTrailOverlay(map: mapboxgl.Map, type: TrailOverlayType): void {
+  const sourceId = `waymarked-trails-${type}`;
+  const layerId = `waymarked-trails-${type}-overlay`;
+
+  try {
+    if (map.getLayer(layerId)) {
+      map.removeLayer(layerId);
+    }
+    if (map.getSource(sourceId)) {
+      map.removeSource(sourceId);
+    }
+  } catch (error) {
+    console.error(`Error removing trail overlay (${type}):`, error);
+  }
+}
+
 // Add trail overlays and natural feature labels
 export function addTrailOverlays(map: mapboxgl.Map): void {
   const addLayers = () => {

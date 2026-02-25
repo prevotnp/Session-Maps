@@ -135,6 +135,7 @@ const MapView: React.FC<MapViewProps> = ({
     initializeMap, 
     toggleLayer,
     activeLayers,
+    activeTrailOverlays,
     zoomIn, 
     zoomOut, 
     flyToUserLocation,
@@ -2211,6 +2212,7 @@ const MapView: React.FC<MapViewProps> = ({
       <UnifiedToolbar 
         onToggleLayer={handleToggleLayer}
         activeLayers={activeLayers}
+        activeTrailOverlays={activeTrailOverlays}
         onStartOfflineSelection={handleStartOfflineSelection}
         onToggleDroneLayer={handleToggleDroneLayer}
         activeDroneLayers={activeDroneLayers}

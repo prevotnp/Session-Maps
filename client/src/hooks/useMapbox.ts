@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { escapeHtml } from '@/lib/escapeHtml';
-import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines } from '@/lib/mapUtils';
+import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
 
 // Set mapbox access token
 const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -32,6 +32,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [activeLayers, setActiveLayers] = useState<string[]>(['esri-hd']);
+  const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking']));
   const [isTerrain3D, setIsTerrain3D] = useState(false);
   const [activeDroneImagery, setActiveDroneImagery] = useState<DroneImage | null>(null);
   const [activeDroneImages, setActiveDroneImages] = useState<Map<number, DroneImage>>(new Map());
@@ -1405,7 +1406,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       console.log('Map loaded successfully');
       // Start with Esri 3D imagery
       addEsriWorldImagery(map);
-      addTrailOverlays(map);
+      addTrailOverlay(map, 'hiking');
       
       // Enable 3D terrain by default
       if (!map.getSource('mapbox-dem')) {
@@ -1539,6 +1540,19 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       } else {
         addTetonCountyParcels(map);
         newActiveLayers.push('property-lines');
+      }
+    } else if (layerType.startsWith('trails-')) {
+      const trailType = layerType.replace('trails-', '') as TrailOverlayType;
+      if (TRAIL_OVERLAY_CONFIG[trailType]) {
+        const newOverlays = new Set(activeTrailOverlays);
+        if (newOverlays.has(trailType)) {
+          removeTrailOverlay(map, trailType);
+          newOverlays.delete(trailType);
+        } else {
+          addTrailOverlay(map, trailType);
+          newOverlays.add(trailType);
+        }
+        setActiveTrailOverlays(newOverlays);
       }
     } else if (layerType === 'markers') {
       // Toggle marker placement mode
@@ -3752,6 +3766,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     map: mapRef.current,
     toggleLayer,
     activeLayers,
+    activeTrailOverlays,
     zoomIn,
     zoomOut,
     flyToUserLocation,

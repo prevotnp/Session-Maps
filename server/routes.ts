@@ -2819,7 +2819,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Trail routing endpoints
-  const { calculateTrailRoute, getTrailStats } = await import('./trailRouting');
+  const { calculateTrailRoute, getTrailStats, ALLOWED_PROFILES } = await import('./trailRouting');
+  type ActivityProfile = typeof ALLOWED_PROFILES[number];
 
   app.post("/api/ors/hiking-route", isAuthenticated, async (req: Request, res: Response) => {
     try {
@@ -2922,6 +2923,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({
           success: false,
           message: `Hiking route error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+      }
+    }
+  });
+
+  app.post("/api/ors/route", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { waypoints, profile } = req.body;
+
+      if (!profile || !ALLOWED_PROFILES.includes(profile)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid profile. Allowed: ${ALLOWED_PROFILES.join(', ')}`
+        });
+      }
+
+      if (!waypoints || !Array.isArray(waypoints) || waypoints.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: "At least 2 waypoints required (format: [[lng, lat], [lng, lat], ...])"
+        });
+      }
+
+      if (waypoints.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: "Maximum 50 waypoints allowed"
+        });
+      }
+
+      const orsApiKey = process.env.ORS_API_KEY;
+      if (!orsApiKey) {
+        console.log(`ORS_API_KEY not set, falling back to custom trail router (profile: ${profile})`);
+        const result = await calculateTrailRoute(waypoints, profile);
+        return res.json(result);
+      }
+
+      const orsUrl = `https://api.openrouteservice.org/v2/directions/${profile}/geojson`;
+
+      const orsResponse = await fetch(orsUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': orsApiKey
+        },
+        body: JSON.stringify({
+          coordinates: waypoints,
+          elevation: true,
+          instructions: false,
+          preference: 'recommended'
+        })
+      });
+
+      if (!orsResponse.ok) {
+        const errorText = await orsResponse.text();
+        console.error(`ORS API error ${orsResponse.status} (profile: ${profile}):`, errorText);
+
+        if (orsResponse.status === 429 || orsResponse.status >= 500) {
+          console.log(`ORS unavailable, falling back to custom trail router (profile: ${profile})`);
+          const result = await calculateTrailRoute(waypoints, profile);
+          return res.json(result);
+        }
+
+        return res.status(orsResponse.status).json({
+          success: false,
+          message: `Route calculation failed: ${errorText}`
+        });
+      }
+
+      const orsData = await orsResponse.json();
+
+      if (!orsData.features || orsData.features.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No route found between these waypoints. Try moving them closer to paths."
+        });
+      }
+
+      const feature = orsData.features[0];
+      const coordinates = feature.geometry.coordinates;
+      const summary = feature.properties.summary;
+
+      const pathCoordinates: [number, number][] = coordinates.map((c: number[]) => [c[0], c[1]]);
+
+      let elevationGain = 0;
+      let elevationLoss = 0;
+      for (let i = 1; i < coordinates.length; i++) {
+        if (coordinates[i].length >= 3 && coordinates[i - 1].length >= 3) {
+          const diff = coordinates[i][2] - coordinates[i - 1][2];
+          if (diff > 0) elevationGain += diff;
+          else elevationLoss += Math.abs(diff);
+        }
+      }
+
+      return res.json({
+        success: true,
+        coordinates: pathCoordinates,
+        distance: summary.distance,
+        duration: summary.duration,
+        elevationGain: Math.round(elevationGain),
+        elevationLoss: Math.round(elevationLoss),
+        profile,
+        source: 'openrouteservice'
+      });
+
+    } catch (error) {
+      console.error('ORS route error:', error);
+
+      try {
+        const { waypoints, profile } = req.body;
+        const result = await calculateTrailRoute(waypoints, profile || 'foot-hiking');
+        return res.json(result);
+      } catch (fallbackError) {
+        return res.status(500).json({
+          success: false,
+          message: `Route error: ${error instanceof Error ? error.message : 'Unknown error'}`
         });
       }
     }
@@ -3152,7 +3269,7 @@ IMPORTANT: Prefer waypoints along these real, named trails. Use the actual trail
 
       const client = new Anthropic({ apiKey });
 
-      const routingContext = routingMode === 'rivers'
+      const routingContext = (routingMode === 'trail' || routingMode === 'rivers')
         ? 'The user will route on TRAILS between your waypoints. Place waypoints near known trail junctions, trailheads, and intersections so the trail router can connect them along real hiking paths.'
         : routingMode === 'road'
         ? 'The user will route on ROADS between your waypoints. Place waypoints at road intersections, parking lots, and key turns.'
