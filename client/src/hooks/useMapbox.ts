@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { escapeHtml } from '@/lib/escapeHtml';
-import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTrailOverlays, removeTrailOverlays, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
+import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, TrailOverlayType, TRAIL_OVERLAY_CONFIG } from '@/lib/mapUtils';
 
 // Set mapbox access token
 const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -1409,8 +1409,8 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       // Start with Esri 3D imagery
       addEsriWorldImagery(map);
       setIsTrailInfoLoading(true);
-      addBaseTrailLinesAndLabels(map);
       addTrailOverlay(map, 'hiking');
+      addBaseTrailLinesAndLabels(map);
 
       const checkTrailSourceLoaded = () => {
         if (map.getSource('streets-labels') && map.isSourceLoaded('streets-labels')) {
@@ -1634,6 +1634,9 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
           });
         }
       }
+      activeTrailOverlays.forEach((trailType) => {
+        addTrailOverlay(map, trailType);
+      });
       addBaseTrailLinesAndLabels(map);
     });
   };

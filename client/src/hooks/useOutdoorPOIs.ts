@@ -242,7 +242,8 @@ export function useOutdoorPOIs(
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      const pois: OutdoorPOI[] = await response.json();
+      const data = await response.json();
+      const pois: OutdoorPOI[] = data.pois || [];
 
       cachedBoundsRef.current.push(queryBounds);
       if (cachedBoundsRef.current.length > 20) {

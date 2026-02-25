@@ -938,7 +938,7 @@ export function switchToEnhancedMapboxSatellite(map: mapboxgl.Map): void {
   
   // Wait for style to load before adding trail overlays
   map.once('styledata', () => {
-    addTrailOverlays(map);
+    addBaseTrailLinesAndLabels(map);
   });
 }
 
@@ -950,7 +950,7 @@ export function switchToEsriImagery(map: mapboxgl.Map): void {
   // Wait for style to load before adding layers
   map.once('styledata', () => {
     addEsriWorldImagery(map);
-    addTrailOverlays(map);
+    addBaseTrailLinesAndLabels(map);
   });
 }
 
@@ -1023,7 +1023,7 @@ export function addTrailOverlay(map: mapboxgl.Map, type: TrailOverlayType): void
           type: 'raster',
           source: sourceId,
           paint: {
-            'raster-opacity': 0.85,
+            'raster-opacity': 0.65,
           },
           minzoom: 8,
         });
@@ -1072,7 +1072,10 @@ export function addBaseTrailLinesAndLabels(map: mapboxgl.Map): void {
           type: 'line',
           source: 'streets-labels',
           'source-layer': 'road',
-          filter: ['in', 'class', 'path', 'track', 'pedestrian'],
+          filter: ['all',
+            ['in', 'class', 'path', 'track', 'pedestrian'],
+            ['!=', 'type', 'corridor']
+          ],
           paint: {
             'line-color': '#D2691E',
             'line-width': { base: 1.5, stops: [[8, 0.8], [12, 2], [16, 3], [20, 4]] },
@@ -1089,7 +1092,11 @@ export function addBaseTrailLinesAndLabels(map: mapboxgl.Map): void {
           type: 'symbol',
           source: 'streets-labels',
           'source-layer': 'road',
-          filter: ['all', ['in', 'class', 'path', 'track', 'pedestrian'], ['has', 'name']],
+          filter: ['all',
+            ['in', 'class', 'path', 'track', 'pedestrian'],
+            ['!=', 'type', 'corridor'],
+            ['has', 'name']
+          ],
           layout: {
             'text-field': ['get', 'name'],
             'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
@@ -1140,63 +1147,6 @@ export function addBaseTrailLinesAndLabels(map: mapboxgl.Map): void {
     addLayers();
   } else {
     map.once('load', addLayers);
-  }
-}
-
-// Add trail overlays (Waymarked Trails raster + base trail lines/labels)
-export function addTrailOverlays(map: mapboxgl.Map): void {
-  const addLayers = () => {
-    try {
-      if (!map.getSource('waymarked-trails')) {
-        map.addSource('waymarked-trails', {
-          type: 'raster',
-          tiles: ['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '© <a href="https://waymarkedtrails.org" target="_blank">Waymarked Trails</a> (CC-BY-SA)',
-          maxzoom: 18
-        });
-      }
-
-      if (!map.getLayer('waymarked-trails-overlay')) {
-        map.addLayer({
-          id: 'waymarked-trails-overlay',
-          type: 'raster',
-          source: 'waymarked-trails',
-          paint: {
-            'raster-opacity': 0.85
-          },
-          minzoom: 8
-        });
-      }
-
-      addBaseTrailLinesAndLabels(map);
-    } catch (error) {
-      console.error('Trail overlay error:', error);
-    }
-  };
-
-  if (map.isStyleLoaded()) {
-    addLayers();
-  } else {
-    map.once('load', addLayers);
-  }
-}
-
-// Remove trail overlays
-export function removeTrailOverlays(map: mapboxgl.Map): void {
-  const trailLayers = ['waymarked-trails-overlay', 'satellite-trails', 'satellite-trail-labels', 'water-labels'];
-
-  trailLayers.forEach(layerId => {
-    if (map.getLayer(layerId)) {
-      map.removeLayer(layerId);
-    }
-  });
-
-  if (map.getSource('waymarked-trails')) {
-    map.removeSource('waymarked-trails');
-  }
-  if (map.getSource('streets-labels')) {
-    map.removeSource('streets-labels');
   }
 }
 
