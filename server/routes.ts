@@ -5,8 +5,6 @@ import { setupAuth } from "./auth";
 import { WebSocketServer, WebSocket } from "ws";
 import Anthropic from '@anthropic-ai/sdk';
 import { 
-  loginSchema, 
-  registerSchema, 
   insertDroneImageSchema,
   insertLocationSchema,
   insertOfflineMapAreaSchema,
@@ -22,11 +20,7 @@ import {
 } from "@shared/schema";
 import crypto, { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
-import session from "express-session";
 import { ZodError } from "zod";
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import MemoryStore from "memorystore";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -268,54 +262,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   await setupAdminUser();
   
-  // Session setup
-  const SessionStore = MemoryStore(session);
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "session-maps-session-secret",
-      resave: false,
-      saveUninitialized: false,
-      cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }, // 1 day
-      store: new SessionStore({
-        checkPeriod: 86400000, // 24 hours
-      }),
-    })
-  );
-  
-  // Passport setup
-  app.use(passport.initialize());
-  app.use(passport.session());
-  
-  passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      try {
-        const user = await dbStorage.getUserByUsername(username);
-        if (!user) {
-          return done(null, false, { message: "Incorrect username" });
-        }
-        if (user.password !== password) {  // In a real app, use bcrypt
-          return done(null, false, { message: "Incorrect password" });
-        }
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
-    })
-  );
-  
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-  
-  passport.deserializeUser(async (id: number, done) => {
-    try {
-      const user = await dbStorage.getUser(id);
-      done(null, user);
-    } catch (err) {
-      done(err);
-    }
-  });
-  
   // Auth middleware
   const isAuthenticated = (req: Request, res: Response, next: any) => {
     if (req.isAuthenticated()) {
@@ -332,104 +278,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(403).json({ message: "Admin access required" });
   };
   
-  // Auth routes
-  app.post("/api/auth/login", (req, res, next) => {
-    const validation = validateRequest(loginSchema, req.body);
-    if (!validation.success) {
-      return res.status(400).json({ message: validation.error });
-    }
-    
-    passport.authenticate("local", (err: any, user: any, info: any) => {
-      if (err) {
-        return next(err);
-      }
-      if (!user) {
-        return res.status(401).json({ message: info.message });
-      }
-      req.logIn(user, (err) => {
-        if (err) {
-          return next(err);
-        }
-        return res.status(200).json({ 
-          message: "Login successful",
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            fullName: user.fullName,
-            isSubscribed: user.isSubscribed,
-            subscriptionExpiry: user.subscriptionExpiry
-          }
-        });
-      });
-    })(req, res, next);
-  });
-  
-  app.post("/api/auth/register", async (req, res) => {
-    const validation = validateRequest(registerSchema, req.body);
-    if (!validation.success) {
-      return res.status(400).json({ message: validation.error });
-    }
-    
-    try {
-      const { confirmPassword, ...userData } = validation.data!;
-      
-      // Check if username or email already exists
-      const existingUsername = await dbStorage.getUserByUsername(userData.username);
-      if (existingUsername) {
-        return res.status(400).json({ message: "Username already exists" });
-      }
-      
-      const existingEmail = await dbStorage.getUserByEmail(userData.email);
-      if (existingEmail) {
-        return res.status(400).json({ message: "Email already exists" });
-      }
-      
-      const newUser = await dbStorage.createUser(userData);
-      
-      // Auto login after registration
-      req.login(newUser, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Error during login" });
-        }
-        return res.status(201).json({ 
-          message: "Registration successful",
-          user: {
-            id: newUser.id,
-            username: newUser.username,
-            email: newUser.email,
-            fullName: newUser.fullName,
-            isSubscribed: newUser.isSubscribed,
-            subscriptionExpiry: newUser.subscriptionExpiry
-          }
-        });
-      });
-    } catch (error) {
-      return res.status(500).json({ message: "Error creating user" });
-    }
-  });
-  
-  app.get("/api/auth/user", isAuthenticated, (req, res) => {
-    const user = req.user as any;
-    return res.status(200).json({
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      fullName: user.fullName,
-      isSubscribed: user.isSubscribed,
-      subscriptionExpiry: user.subscriptionExpiry
-    });
-  });
-  
-  app.post("/api/auth/logout", (req, res) => {
-    req.logout((err) => {
-      if (err) {
-        return res.status(500).json({ message: "Error during logout" });
-      }
-      return res.status(200).json({ message: "Logout successful" });
-    });
-  });
-
   // Password reset - request reset link
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
