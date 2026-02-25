@@ -33,6 +33,12 @@ async function comparePasswords(supplied: string, stored: string) {
   return result;
 }
 
+function sanitizeUser(user: any) {
+  if (!user) return user;
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
 export function setupAuth(app: Express) {
   const PostgresSessionStore = connectPg(session);
   const sessionStore = new PostgresSessionStore({
@@ -95,7 +101,7 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await dbStorage.getUser(id);
-      done(null, user);
+      done(null, user ? sanitizeUser(user) : null);
     } catch (error) {
       done(error);
     }
@@ -135,7 +141,7 @@ export function setupAuth(app: Express) {
 
       req.login(user, (err) => {
         if (err) return next(err);
-        res.status(201).json(user);
+        res.status(201).json(sanitizeUser(user));
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -166,7 +172,7 @@ export function setupAuth(app: Express) {
           console.error('Login error:', loginErr);
           return next(loginErr);
         }
-        res.status(200).json(user);
+        res.status(200).json(sanitizeUser(user));
       });
     } catch (error) {
       console.error('Direct login error:', error);
