@@ -5152,7 +5152,7 @@ Response JSON format:
     }
   });
 
-  app.post("/api/proxy/overpass", async (req: Request, res: Response) => {
+  app.post("/api/proxy/overpass", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { query } = req.body;
       if (!query) return res.status(400).json({ error: "Missing query" });
@@ -5169,7 +5169,7 @@ Response JSON format:
     }
   });
 
-  app.get("/api/proxy/elevation", async (req: Request, res: Response) => {
+  app.get("/api/proxy/elevation", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { latitude, longitude } = req.query;
       if (!latitude || !longitude) return res.status(400).json({ error: "Missing latitude/longitude" });
