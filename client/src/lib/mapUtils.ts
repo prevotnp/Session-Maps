@@ -1095,13 +1095,14 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
           type: 'line',
           source: 'streets-labels',
           'source-layer': 'road',
-          filter: ['all', ['==', 'class', 'path']],
+          filter: ['in', 'class', 'path', 'track', 'pedestrian'],
           paint: {
             'line-color': '#8B4513',
             'line-width': { base: 1.5, stops: [[10, 1], [16, 2], [20, 3]] },
             'line-dasharray': [2, 1],
             'line-opacity': 0.6
-          }
+          },
+          minzoom: 12
         });
       }
 
@@ -1111,7 +1112,7 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
           type: 'symbol',
           source: 'streets-labels',
           'source-layer': 'road',
-          filter: ['all', ['==', 'class', 'path'], ['has', 'name']],
+          filter: ['all', ['in', 'class', 'path', 'track', 'pedestrian'], ['has', 'name']],
           layout: {
             'text-field': ['get', 'name'],
             'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
@@ -1124,7 +1125,8 @@ export function addTrailOverlays(map: mapboxgl.Map): void {
             'text-halo-color': '#FFFFFF',
             'text-halo-width': 2,
             'text-opacity': 0.9
-          }
+          },
+          minzoom: 12
         });
       }
 
