@@ -31,12 +31,17 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      
+      const sensitiveEndpoints = ['/api/login', '/api/register', '/api/auth', '/api/user-location', '/api/shared-locations'];
+      const isSensitive = sensitiveEndpoints.some(ep => path.startsWith(ep));
+      
+      if (capturedJsonResponse && !isSensitive) {
+        const bodyStr = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${bodyStr.length > 200 ? bodyStr.slice(0, 200) + '…' : bodyStr}`;
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (logLine.length > 300) {
+        logLine = logLine.slice(0, 299) + "…";
       }
 
       log(logLine);
