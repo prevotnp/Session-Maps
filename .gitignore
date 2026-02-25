@@ -1,0 +1,14 @@
+node_modules/
+.cache/
+.upm/
+dist/
+.build/
+uploads/
+attached_assets/
+public/drone-tiles/
+*.tif
+*.tiff
+*.zip
+*.pack
+cookies.txt
+mobile_cookies.txt

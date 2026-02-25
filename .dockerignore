@@ -1,0 +1,77 @@
+# Large uploads folder - this is the main culprit (6+ GB)
+uploads/
+uploads/**
+
+# Dependencies - reinstalled during build
+node_modules/
+node_modules/**
+
+# Development files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+coverage/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Build cache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+
+# Documentation
+*.md
+docs/
+
+# Drizzle artifacts
+drizzle/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Environment files
+.env.local
+.env.development
+.env.test
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
+*.tar.gz
+*.rar
+*.tif
+*.tiff
+
+# 3D model files
+*.glb
+*.gltf
+*.obj
+*.ply
+
+# Attached assets (if any)
+attached_assets/
