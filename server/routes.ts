@@ -239,6 +239,11 @@ const validateRequest = <T extends import("zod").ZodSchema>(schema: T, data: unk
   }
 };
 
+function parseId(param: string): number | null {
+  const id = parseInt(param, 10);
+  return isNaN(id) || id < 1 ? null : id;
+}
+
 function safePath(baseDir: string, filename: string): string | null {
   const sanitized = path.basename(filename);
   const filePath = path.join(baseDir, sanitized);
@@ -632,7 +637,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Update drone image (admin only)
   app.put("/api/admin/drone-images/:id", isAdmin, async (req, res) => {
-    const droneImageId = parseInt(req.params.id);
+    const droneImageId = parseId(req.params.id);
     
     try {
       const droneImage = await dbStorage.getDroneImage(droneImageId);
@@ -649,7 +654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Delete drone image (admin only)
   app.delete("/api/admin/drone-images/:id", isAdmin, async (req, res) => {
-    const droneImageId = parseInt(req.params.id);
+    const droneImageId = parseId(req.params.id);
     
     try {
       const droneImage = await dbStorage.getDroneImage(droneImageId);
@@ -671,7 +676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Toggle active state for drone image (admin only)
   // Only one drone image can be active at a time
   app.post("/api/admin/drone-images/:id/toggle-active", isAdmin, async (req, res) => {
-    const droneImageId = parseInt(req.params.id);
+    const droneImageId = parseId(req.params.id);
     
     try {
       const droneImage = await dbStorage.getDroneImage(droneImageId);
@@ -774,7 +779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Toggle active state for drone image (authenticated users)
   // This allows any authenticated user to view drone imagery
   app.post("/api/drone-images/:id/toggle-active", isAuthenticated, async (req, res) => {
-    const droneImageId = parseInt(req.params.id);
+    const droneImageId = parseId(req.params.id);
     
     try {
       const droneImage = await dbStorage.getDroneImage(droneImageId);
@@ -966,7 +971,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Upload MTL and texture files for an existing 3D model (admin only)
   app.post("/api/admin/drone-models/:modelId/textures", isAdmin, modelMultiUpload.array('files', 20), async (req, res) => {
-    const modelId = parseInt(req.params.modelId);
+    const modelId = parseId(req.params.modelId);
+    if (!modelId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const files = req.files as Express.Multer.File[];
     
     try {
@@ -1004,7 +1012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get 3D model for a drone image
   app.get("/api/drone-images/:id/model", async (req, res) => {
-    const droneImageId = parseInt(req.params.id);
+    const droneImageId = parseId(req.params.id);
     
     try {
       const model = await dbStorage.getDroneModelByDroneImageId(droneImageId);
@@ -1019,7 +1027,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update 3D model metadata (admin only)
   app.put("/api/admin/drone-models/:id", isAdmin, async (req, res) => {
-    const modelId = parseInt(req.params.id);
+    const modelId = parseId(req.params.id);
+    if (!modelId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const { name, centerLat, centerLng, altitude } = req.body;
     
     try {
@@ -1042,7 +1053,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Delete 3D model (admin only)
   app.delete("/api/admin/drone-models/:id", isAdmin, async (req, res) => {
-    const modelId = parseInt(req.params.id);
+    const modelId = parseId(req.params.id);
     
     try {
       const model = await dbStorage.getDroneModel(modelId);
@@ -1100,7 +1111,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/cesium-tilesets/:id", isAuthenticated, async (req, res) => {
     try {
-      const tileset = await dbStorage.getCesium3dTileset(parseInt(req.params.id));
+      const tilesetId = parseId(req.params.id);
+      if (!tilesetId) {
+        return res.status(400).json({ message: "Invalid ID" });
+      }
+      const tileset = await dbStorage.getCesium3dTileset(tilesetId);
       if (!tileset) return res.status(404).json({ message: "Tileset not found" });
       return res.json(tileset);
     } catch (error) {
@@ -1293,7 +1308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/cesium-tilesets/:id/tiles/*", async (req, res) => {
     try {
-      const tilesetId = parseInt(req.params.id);
+      const tilesetId = parseId(req.params.id);
       const tilePath = (req.params as Record<string, string>)[0];
       
       const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
@@ -1338,7 +1353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/cesium-tilesets/:id", isAdmin, async (req, res) => {
     try {
-      const tilesetId = parseInt(req.params.id);
+      const tilesetId = parseId(req.params.id);
       const tileset = await dbStorage.getCesium3dTileset(tilesetId);
       if (!tileset) return res.status(404).json({ message: "Tileset not found" });
 
@@ -1419,7 +1434,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.delete("/api/offline-maps/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const offlineMapAreaId = parseInt(req.params.id);
+    const offlineMapAreaId = parseId(req.params.id);
+    if (!offlineMapAreaId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       // Verify the offline map area belongs to the user
@@ -1479,7 +1497,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.put("/api/waypoints/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const waypointId = parseInt(req.params.id);
+    const waypointId = parseId(req.params.id);
+    if (!waypointId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       // Verify the waypoint belongs to the user
@@ -1506,7 +1527,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.delete("/api/waypoints/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const waypointId = parseInt(req.params.id);
+    const waypointId = parseId(req.params.id);
+    if (!waypointId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       // Verify the waypoint belongs to the user
@@ -1561,7 +1585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get("/api/map-drawings/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const drawingId = parseInt(req.params.id);
+    const drawingId = parseId(req.params.id);
     
     try {
       const drawing = await dbStorage.getMapDrawing(drawingId);
@@ -1582,7 +1606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.put("/api/map-drawings/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const drawingId = parseInt(req.params.id);
+    const drawingId = parseId(req.params.id);
     
     try {
       const drawing = await dbStorage.getMapDrawing(drawingId);
@@ -1604,7 +1628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.delete("/api/map-drawings/:id", isAuthenticated, async (req, res) => {
     const user = req.user as any;
-    const drawingId = parseInt(req.params.id);
+    const drawingId = parseId(req.params.id);
     
     try {
       const drawing = await dbStorage.getMapDrawing(drawingId);
@@ -1697,7 +1721,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Accept or reject location share request
   app.patch('/api/location-shares/:id', isAuthenticated, async (req: Request, res: Response) => {
     const user = req.user as any;
-    const shareId = parseInt(req.params.id);
+    const shareId = parseId(req.params.id);
+    if (!shareId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const { status } = req.body; // 'accepted' or 'rejected'
 
     if (!['accepted', 'rejected'].includes(status)) {
@@ -1835,7 +1862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete location share
   app.delete('/api/location-shares/:id', isAuthenticated, async (req: Request, res: Response) => {
     const user = req.user as any;
-    const shareId = parseInt(req.params.id);
+    const shareId = parseId(req.params.id);
 
     try {
       const locationShare = await dbStorage.getLocationShare(shareId);
@@ -1882,10 +1909,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update an existing route
   app.put("/api/routes/:id", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
     const user = req.user as any;
     
-    if (isNaN(routeId)) {
+    if (!routeId) {
       return res.status(400).json({ message: "Invalid route ID" });
     }
     
@@ -2010,10 +2037,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Partial update for route (toggle public, etc.)
   app.patch("/api/routes/:id", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
     const user = req.user as any;
     
-    if (isNaN(routeId)) {
+    if (!routeId) {
       return res.status(400).json({ message: "Invalid route ID" });
     }
     
@@ -2087,9 +2114,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get user public profile with their public routes
   app.get("/api/users/:userId/public-profile", async (req, res) => {
-    const userId = parseInt(req.params.userId);
+    const userId = parseId(req.params.userId);
     
-    if (isNaN(userId)) {
+    if (!userId) {
       return res.status(400).json({ message: "Invalid user ID" });
     }
     
@@ -2114,7 +2141,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/routes/:id", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     
     try {
@@ -2136,7 +2166,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/routes/:id", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     
     try {
@@ -2164,7 +2197,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route sharing endpoints
   app.post("/api/routes/:id/share", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     const { emailOrUsername } = req.body;
 
@@ -2218,7 +2254,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/routes/:id/shares", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
+    const routeId = parseId(req.params.id);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2241,8 +2280,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/routes/:id/shares/:shareId", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.id);
-    const shareId = parseInt(req.params.shareId);
+    const routeId = parseId(req.params.id);
+    const shareId = parseId(req.params.shareId);
+    if (!routeId || !shareId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2270,7 +2312,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route Notes endpoints
   app.get("/api/routes/:routeId/notes", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2295,7 +2340,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/routes/:routeId/notes", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2329,8 +2377,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put("/api/routes/:routeId/notes/:noteId", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const noteId = parseInt(req.params.noteId);
+    const routeId = parseId(req.params.routeId);
+    const noteId = parseId(req.params.noteId);
+    if (!routeId || !noteId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2362,8 +2413,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/routes/:routeId/notes/:noteId", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const noteId = parseInt(req.params.noteId);
+    const routeId = parseId(req.params.routeId);
+    const noteId = parseId(req.params.noteId);
+    if (!routeId || !noteId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2390,7 +2444,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route Points of Interest endpoints
   app.get("/api/routes/:routeId/pois", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2416,7 +2473,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/routes/:routeId/pois", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2453,8 +2513,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put("/api/routes/:routeId/pois/:poiId", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const poiId = parseInt(req.params.poiId);
+    const routeId = parseId(req.params.routeId);
+    const poiId = parseId(req.params.poiId);
+    if (!routeId || !poiId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -2493,8 +2556,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Upload photos for a POI
   app.post("/api/routes/:routeId/pois/:poiId/photos", isAuthenticated, waypointPhotoUpload.array('photos', 100), async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const poiId = parseInt(req.params.poiId);
+    const routeId = parseId(req.params.routeId);
+    const poiId = parseId(req.params.poiId);
+    if (!routeId || !poiId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     const files = req.files as Express.Multer.File[];
 
@@ -2542,8 +2608,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Delete a photo from a POI
   app.delete("/api/routes/:routeId/pois/:poiId/photos", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const poiId = parseInt(req.params.poiId);
+    const routeId = parseId(req.params.routeId);
+    const poiId = parseId(req.params.poiId);
+    if (!routeId || !poiId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     const { photoPath } = req.body;
 
@@ -2611,7 +2680,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       next();
     });
   }, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     const files = req.files as Express.Multer.File[];
 
@@ -2654,7 +2726,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Delete a photo from a route
   app.delete("/api/routes/:routeId/photos", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
+    const routeId = parseId(req.params.routeId);
+    if (!routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
     const { photoPath } = req.body;
 
@@ -2708,8 +2783,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/routes/:routeId/pois/:poiId", isAuthenticated, async (req, res) => {
-    const routeId = parseInt(req.params.routeId);
-    const poiId = parseInt(req.params.poiId);
+    const routeId = parseId(req.params.routeId);
+    const poiId = parseId(req.params.poiId);
+    if (!routeId || !poiId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const user = req.user as any;
 
     try {
@@ -3258,7 +3336,11 @@ Response JSON format:
         }
         
         if (data.type === 'session:join' && userId) {
-          const sessionId = parseInt(data.sessionId);
+          const sessionId = parseId(String(data.sessionId));
+          if (!sessionId) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid session ID' }));
+            return;
+          }
           
           try {
             const session = await dbStorage.getLiveMapSession(sessionId);
@@ -3589,7 +3671,7 @@ Response JSON format:
 
   app.get('/api/drone-images/:id/tile-info', async (req: Request, res: Response) => {
     try {
-      const imageId = parseInt(req.params.id);
+      const imageId = parseId(req.params.id);
       const droneImage = await dbStorage.getDroneImage(imageId);
       
       if (!droneImage) {
@@ -3611,7 +3693,7 @@ Response JSON format:
   });
 
   app.post('/api/admin/drone-images/:id/generate-tiles', isAdmin, extendTimeout, async (req: Request, res: Response) => {
-    const imageId = parseInt(req.params.id);
+    const imageId = parseId(req.params.id);
     
     try {
       const droneImage = await dbStorage.getDroneImage(imageId);
@@ -3686,7 +3768,7 @@ Response JSON format:
   });
 
   app.get("/api/trips/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const trip = await dbStorage.getTrip(id);
@@ -3707,7 +3789,10 @@ Response JSON format:
   });
 
   app.put("/api/trips/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const existingTrip = await dbStorage.getTrip(id);
@@ -3724,7 +3809,10 @@ Response JSON format:
   });
 
   app.delete("/api/trips/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const existingTrip = await dbStorage.getTrip(id);
@@ -3777,7 +3865,10 @@ Response JSON format:
   });
 
   app.get("/api/trips/:tripId/calendar-events", isAuthenticated, async (req: Request, res: Response) => {
-    const tripId = parseInt(req.params.tripId);
+    const tripId = parseId(req.params.tripId);
+    if (!tripId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       // Verify the user owns the trip
@@ -3795,7 +3886,7 @@ Response JSON format:
   });
 
   app.get("/api/calendar-events/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const event = await dbStorage.getCalendarEvent(id);
@@ -3816,7 +3907,10 @@ Response JSON format:
   });
 
   app.put("/api/calendar-events/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const existingEvent = await dbStorage.getCalendarEvent(id);
@@ -3833,7 +3927,10 @@ Response JSON format:
   });
 
   app.delete("/api/calendar-events/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const existingEvent = await dbStorage.getCalendarEvent(id);
@@ -3957,7 +4054,7 @@ Response JSON format:
 
   // Accept friend request
   app.patch("/api/friend-requests/:id/accept", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const request = await dbStorage.getFriendRequest(id);
@@ -3991,7 +4088,7 @@ Response JSON format:
 
   // Decline friend request
   app.patch("/api/friend-requests/:id/decline", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const request = await dbStorage.getFriendRequest(id);
@@ -4017,7 +4114,7 @@ Response JSON format:
 
   // Cancel sent friend request
   app.delete("/api/friend-requests/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const request = await dbStorage.getFriendRequest(id);
@@ -4055,7 +4152,10 @@ Response JSON format:
 
   // Remove friend
   app.delete("/api/friends/:friendId", isAuthenticated, async (req: Request, res: Response) => {
-    const friendId = parseInt(req.params.friendId);
+    const friendId = parseId(req.params.friendId);
+    if (!friendId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const success = await dbStorage.deleteFriendship(req.user!.id, friendId);
@@ -4155,7 +4255,7 @@ Response JSON format:
 
   // Get a specific live map session with all data
   app.get("/api/live-maps/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const session = await dbStorage.getLiveMapSession(id);
@@ -4270,7 +4370,7 @@ Response JSON format:
 
   // Leave a live map session
   app.post("/api/live-maps/:id/leave", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const session = await dbStorage.getLiveMapSession(id);
@@ -4308,7 +4408,7 @@ Response JSON format:
 
   // End a live map session (owner only) - saves all data as immutable route
   app.delete("/api/live-maps/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     
     try {
       const session = await dbStorage.getLiveMapSession(id);
@@ -4427,7 +4527,10 @@ Response JSON format:
 
   // Record GPS track point during a live session
   app.post("/api/live-maps/:id/gps-track", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { coordinates, totalDistance } = req.body;
@@ -4482,7 +4585,10 @@ Response JSON format:
 
   // Get GPS tracks for a live session
   app.get("/api/live-maps/:id/gps-tracks", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const isMember = await dbStorage.isLiveMapMember(sessionId, req.user!.id);
@@ -4512,7 +4618,10 @@ Response JSON format:
 
   // Update drone layers for a session
   app.patch("/api/live-maps/:id/drone-layers", isAuthenticated, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { activeDroneLayers } = req.body;
@@ -4543,7 +4652,10 @@ Response JSON format:
 
   // Add a POI to a live map
   app.post("/api/live-maps/:id/pois", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { name, note, latitude, longitude } = req.body;
@@ -4579,8 +4691,11 @@ Response JSON format:
 
   // Delete a POI from a live map
   app.delete("/api/live-maps/:sessionId/pois/:poiId", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.sessionId);
-    const poiId = parseInt(req.params.poiId);
+    const sessionId = parseId(req.params.sessionId);
+    const poiId = parseId(req.params.poiId);
+    if (!sessionId || !poiId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const isMember = await dbStorage.isLiveMapMember(sessionId, req.user!.id);
@@ -4607,7 +4722,10 @@ Response JSON format:
 
   // Add a route to a live map
   app.post("/api/live-maps/:id/routes", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { name, pathCoordinates, totalDistance } = req.body;
@@ -4642,8 +4760,11 @@ Response JSON format:
 
   // Update a route on a live map
   app.put("/api/live-maps/:sessionId/routes/:routeId", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.sessionId);
-    const routeId = parseInt(req.params.routeId);
+    const sessionId = parseId(req.params.sessionId);
+    const routeId = parseId(req.params.routeId);
+    if (!sessionId || !routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { name, pathCoordinates } = req.body;
@@ -4691,8 +4812,11 @@ Response JSON format:
 
   // Delete a route from a live map
   app.delete("/api/live-maps/:sessionId/routes/:routeId", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.sessionId);
-    const routeId = parseInt(req.params.routeId);
+    const sessionId = parseId(req.params.sessionId);
+    const routeId = parseId(req.params.routeId);
+    if (!sessionId || !routeId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const isMember = await dbStorage.isLiveMapMember(sessionId, req.user!.id);
@@ -4719,7 +4843,10 @@ Response JSON format:
 
   // Send a message to a live map
   app.post("/api/live-maps/:id/messages", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const { body } = req.body;
@@ -4759,7 +4886,10 @@ Response JSON format:
 
   // Get messages for a live map
   app.get("/api/live-maps/:id/messages", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     
     try {
       const isMember = await dbStorage.isLiveMapMember(sessionId, req.user!.id);
@@ -4786,7 +4916,7 @@ Response JSON format:
 
   // Send live map invite to a friend
   app.post("/api/live-maps/:id/invites", isAuthenticated, async (req: Request, res: Response) => {
-    const sessionId = parseInt(req.params.id);
+    const sessionId = parseId(req.params.id);
     const { toUserId } = req.body;
     
     try {
@@ -4851,7 +4981,10 @@ Response JSON format:
 
   // Accept or decline a live map invite
   app.patch("/api/live-map-invites/:id", isAuthenticated, async (req: Request, res: Response) => {
-    const inviteId = parseInt(req.params.id);
+    const inviteId = parseId(req.params.id);
+    if (!inviteId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
     const { status } = req.body;
     
     try {
@@ -5012,9 +5145,9 @@ Response JSON format:
   app.get("/api/activities/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
-      const activityId = parseInt(req.params.id);
+      const activityId = parseId(req.params.id);
       
-      if (isNaN(activityId)) {
+      if (!activityId) {
         return res.status(400).json({ error: "Invalid activity ID" });
       }
       
@@ -5040,9 +5173,9 @@ Response JSON format:
   app.patch("/api/activities/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
-      const activityId = parseInt(req.params.id);
+      const activityId = parseId(req.params.id);
       
-      if (isNaN(activityId)) {
+      if (!activityId) {
         return res.status(400).json({ error: "Invalid activity ID" });
       }
       
@@ -5075,9 +5208,9 @@ Response JSON format:
   app.delete("/api/activities/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
-      const activityId = parseInt(req.params.id);
+      const activityId = parseId(req.params.id);
       
-      if (isNaN(activityId)) {
+      if (!activityId) {
         return res.status(400).json({ error: "Invalid activity ID" });
       }
       
@@ -5102,9 +5235,9 @@ Response JSON format:
   app.post("/api/activities/:id/save-as-route", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
-      const activityId = parseInt(req.params.id);
+      const activityId = parseId(req.params.id);
 
-      if (isNaN(activityId)) {
+      if (!activityId) {
         return res.status(400).json({ error: "Invalid activity ID" });
       }
 
