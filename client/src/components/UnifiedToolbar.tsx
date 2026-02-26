@@ -122,11 +122,11 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   return (
     <div className={cn(
       "absolute left-0 right-0 px-2 sm:px-4 transition-all duration-300",
-      isRecordingActive ? "bottom-20 z-40" : "bottom-20 z-10"
+      isRecordingActive ? "bottom-1 z-40" : "bottom-1 z-10"
     )}>
       <div className="flex justify-center">
         <div className="relative max-w-full">
-          <div className="bg-dark/90 backdrop-blur-sm rounded-2xl px-1 sm:px-2 py-2 flex items-end space-x-0.5 sm:space-x-1 shadow-2xl border border-white/10">
+          <div className="bg-[#1a1a1a] rounded-2xl px-1 sm:px-2 py-2 flex items-end space-x-0.5 sm:space-x-1 shadow-2xl border border-white/10">
             
             <div className="flex flex-col items-center">
               <span className="text-[11px] text-white font-medium underline mb-px">Explore</span>
@@ -159,7 +159,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   </button>
                   
                   {layersDropdownOpen && (
-                    <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-2xl border border-white/20 z-50">
+                    <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-56 max-w-sm shadow-2xl border border-white/20 z-50">
                       <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
                         <span className="text-xs text-white font-medium">Map Layers</span>
                         <button
@@ -268,7 +268,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                   </button>
                   
                   {droneDropdownOpen && (
-                    <div className="fixed bottom-20 left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
+                    <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
                       <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
                         <span className="text-xs text-white font-medium">Drone Layers</span>
                         <button

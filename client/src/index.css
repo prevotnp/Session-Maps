@@ -151,9 +151,13 @@
     @apply absolute top-0 left-0 w-full h-full;
   }
   
-  /* Map attribution styles */
+  /* Map attribution styles - hidden behind toolbar */
   .mapboxgl-ctrl-attrib {
-    @apply text-xs text-white/70 bg-transparent;
+    @apply text-xs text-white/70 bg-transparent opacity-0 pointer-events-none;
+  }
+  .mapboxgl-ctrl-bottom-left,
+  .mapboxgl-ctrl-bottom-right {
+    @apply opacity-0 pointer-events-none;
   }
   
   /* Map controls container */
