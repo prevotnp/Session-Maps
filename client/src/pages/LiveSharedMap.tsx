@@ -1271,6 +1271,7 @@ export default function LiveSharedMap() {
       if (dot) {
         dot.style.background = color;
         dot.style.animation = 'member-pulse 2s ease-in-out infinite';
+        dot.style.opacity = '1';
       }
       const lostOverlay = el?.querySelector('.signal-lost-overlay') as HTMLElement;
       if (lostOverlay) lostOverlay.style.display = 'none';
@@ -1298,7 +1299,7 @@ export default function LiveSharedMap() {
         background: ${color};
         border: 3px solid white;
         border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
         animation: member-pulse 2s ease-in-out infinite;
       `;
 
@@ -1366,7 +1367,7 @@ export default function LiveSharedMap() {
   useEffect(() => {
     const SIGNAL_LOST_THRESHOLD = 2 * 60 * 1000;
     
-    signalLostCheckRef.current = setInterval(() => {
+    const checkSignalLost = () => {
       const now = Date.now();
       memberLastUpdateRef.current.forEach((lastUpdate, userId) => {
         if (userId === user?.id) return;
@@ -1381,7 +1382,10 @@ export default function LiveSharedMap() {
         const lostLabel = el.querySelector('.signal-lost-label') as HTMLElement;
         
         if (elapsed > SIGNAL_LOST_THRESHOLD) {
-          if (dot) dot.style.animation = 'none';
+          if (dot) {
+            dot.style.animation = 'none';
+            dot.style.opacity = '0.5';
+          }
           if (lostOverlay) lostOverlay.style.display = 'block';
           if (lostLabel) {
             const lostTime = new Date(lastUpdate);
@@ -1389,11 +1393,20 @@ export default function LiveSharedMap() {
             lostLabel.textContent = `Signal Lost ${timeStr}`;
             lostLabel.style.display = 'block';
           }
+        } else {
+          if (dot) {
+            dot.style.opacity = '1';
+          }
         }
       });
-    }, 15000);
+    };
+    
+    const initialCheck = setTimeout(checkSignalLost, 2000);
+    
+    signalLostCheckRef.current = setInterval(checkSignalLost, 15000);
 
     return () => {
+      clearTimeout(initialCheck);
       if (signalLostCheckRef.current) {
         clearInterval(signalLostCheckRef.current);
       }
@@ -1486,7 +1499,7 @@ export default function LiveSharedMap() {
     label: 'LiveTeamMap',
   });
   
-  // Render member markers from session data
+  // Render member markers from session data and seed lastUpdate timestamps
   useEffect(() => {
     if (!session?.members || !map.current) return;
     
@@ -1497,9 +1510,16 @@ export default function LiveSharedMap() {
           parseFloat(member.latitude), 
           parseFloat(member.longitude)
         );
+        
+        if (member.userId !== user?.id && member.lastActive) {
+          memberLastUpdateRef.current.set(
+            member.userId, 
+            new Date(member.lastActive).getTime()
+          );
+        }
       }
     });
-  }, [session?.members, updateMemberMarker]);
+  }, [session?.members, updateMemberMarker, user?.id]);
   
   // Draw path lines for each member on the map
   useEffect(() => {
