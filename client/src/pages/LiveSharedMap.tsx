@@ -191,6 +191,8 @@ export default function LiveSharedMap() {
   const [drawRoutePoints, setDrawRoutePoints] = useState<[number, number][]>([]);
   const [showSaveRouteDialog, setShowSaveRouteDialog] = useState(false);
   const [newRouteName, setNewRouteName] = useState("");
+  const [showRoutes, setShowRoutes] = useState(false);
+  const [showImportRouteDialog, setShowImportRouteDialog] = useState(false);
   
   // Shared route viewing/editing state
   const [selectedSharedRoute, setSelectedSharedRoute] = useState<any | null>(null);
@@ -236,6 +238,11 @@ export default function LiveSharedMap() {
       return res.json();
     },
     enabled: !!sessionId
+  });
+
+  const { data: myRoutes = [], isLoading: isLoadingMyRoutes } = useQuery<any[]>({
+    queryKey: ['/api/routes'],
+    enabled: showImportRouteDialog,
   });
   
   const isOwner = session && user && session.ownerId === user.id;
@@ -388,6 +395,42 @@ export default function LiveSharedMap() {
       setSelectedSharedRoute(null);
       queryClient.invalidateQueries({ queryKey: ['/api/live-maps', sessionId] });
       toast({ title: "Route deleted", description: "Route has been removed" });
+    }
+  });
+
+  const normalizePathCoordinates = (raw: string): string => {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) return raw;
+      const first = parsed[0];
+      if (Array.isArray(first)) {
+        return JSON.stringify(parsed.map((coord: number[]) => ({
+          lat: coord[1],
+          lng: coord[0]
+        })));
+      }
+      return raw;
+    } catch {
+      return raw;
+    }
+  };
+
+  const importRouteMutation = useMutation({
+    mutationFn: async (savedRoute: any) => {
+      const normalizedCoords = normalizePathCoordinates(savedRoute.pathCoordinates);
+      return apiRequest('POST', `/api/live-maps/${sessionId}/routes`, {
+        name: savedRoute.name,
+        pathCoordinates: normalizedCoords,
+        totalDistance: savedRoute.totalDistance,
+      });
+    },
+    onSuccess: () => {
+      setShowImportRouteDialog(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/live-maps', sessionId] });
+      toast({ title: "Route imported!", description: "Saved route has been shared with the team" });
+    },
+    onError: () => {
+      toast({ title: "Import failed", description: "Could not import route", variant: "destructive" });
     }
   });
   
@@ -922,7 +965,7 @@ export default function LiveSharedMap() {
           type: 'line',
           source: sourceId,
           paint: {
-            'line-color': '#10b981',
+            'line-color': getMemberColor(route.createdBy, session.members, user?.id),
             'line-width': 3,
             'line-opacity': 0.8
           }
@@ -941,8 +984,9 @@ export default function LiveSharedMap() {
         sharedRouteLayersRef.current.push(sourceId);
         routeHandlersRef.current.push({ layerId, clickHandler, enterHandler, leaveHandler });
         
+        const routeColor = getMemberColor(route.createdBy, session.members, user?.id);
         const startEl = document.createElement('div');
-        startEl.style.cssText = `width:12px;height:12px;background:#10b981;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
+        startEl.style.cssText = `width:12px;height:12px;background:${routeColor};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
         const startMarker = new mapboxgl.Marker({ element: startEl })
           .setLngLat(lngLatCoords[0])
           .addTo(m);
@@ -1743,6 +1787,22 @@ export default function LiveSharedMap() {
                     <span className="text-[10px] mt-0.5">Route</span>
                   </button>
 
+                  {/* Routes List Panel */}
+                  <button
+                    onClick={() => setShowRoutes(!showRoutes)}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      showRoutes && "active ring-2 ring-emerald-500"
+                    )}
+                    data-testid="toolbar-routes-panel"
+                  >
+                    <RouteIcon className="h-5 w-5 text-emerald-400" />
+                    <span className="text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                      <span>Routes</span>
+                      <span>({session?.routes?.length || 0})</span>
+                    </span>
+                  </button>
+
                   {/* My Team */}
                   <button
                     onClick={() => setShowMembers(!showMembers)}
@@ -1867,6 +1927,13 @@ export default function LiveSharedMap() {
                     Save
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowImportRouteDialog(true)}
+                >
+                  Import Saved
+                </Button>
                 <Button
                   size="sm"
                   variant="destructive"
@@ -2155,6 +2222,126 @@ export default function LiveSharedMap() {
           </div>
         )}
         
+        {/* Routes Management Panel */}
+        {showRoutes && (
+          <div className="absolute inset-0 bg-gray-900 z-30 flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                <RouteIcon className="w-5 h-5" />
+                Routes ({session?.routes?.length || 0})
+              </h3>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                className="h-10 w-10 rounded-full hover:bg-gray-700"
+                onClick={() => setShowRoutes(false)}
+              >
+                <X className="w-6 h-6 text-white" />
+              </Button>
+            </div>
+
+            <div className="p-4 border-b border-gray-700 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowRoutes(false);
+                  setIsDrawingRoute(true);
+                }}
+                disabled={isSessionEnded}
+              >
+                <RouteIcon className="w-4 h-4 mr-2" />
+                Draw New Route
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowImportRouteDialog(true)}
+                disabled={isSessionEnded}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Import Saved
+              </Button>
+            </div>
+
+            <ScrollArea className="flex-1 p-4">
+              {(!session?.routes || session.routes.length === 0) ? (
+                <div className="text-center py-12 text-gray-400">
+                  <RouteIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">No routes yet</p>
+                  <p className="text-sm mt-1">Draw a new route or import one from your saved routes.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {session.routes.map((route: LiveMapRoute) => {
+                    const color = getMemberColor(route.createdBy, session.members, user?.id);
+                    const distance = (() => {
+                      try {
+                        const coords: {lat: number; lng: number}[] = JSON.parse(route.pathCoordinates);
+                        const lngLatCoords = coords.map(c => [c.lng, c.lat] as [number, number]);
+                        return `${(calculatePathDistance(lngLatCoords) * 0.000621371).toFixed(2)} mi`;
+                      } catch { return '—'; }
+                    })();
+                    const pointCount = (() => {
+                      try { return JSON.parse(route.pathCoordinates).length; } catch { return 0; }
+                    })();
+                    const canManage = route.createdBy === user?.id || isOwner;
+
+                    return (
+                      <div key={route.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-800">
+                        <div className="w-4 h-4 rounded-full shrink-0 border-2 border-white/30" style={{ background: color }} />
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-medium truncate">{route.name}</p>
+                          <p className="text-sm text-gray-400">
+                            by {route.createdByUser?.username || 'Unknown'} · {distance} · {pointCount} pts
+                          </p>
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          onClick={() => {
+                            try {
+                              const coords: {lat: number; lng: number}[] = JSON.parse(route.pathCoordinates);
+                              if (coords.length > 0) {
+                                setShowRoutes(false);
+                                const lngs = coords.map(c => c.lng);
+                                const lats = coords.map(c => c.lat);
+                                map.current?.fitBounds(
+                                  [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+                                  { padding: 60, maxZoom: 16 }
+                                );
+                              }
+                            } catch {}
+                          }}
+                          title="Zoom to route"
+                        >
+                          <Navigation className="w-4 h-4" />
+                        </Button>
+
+                        {canManage && !isSessionEnded && (
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            onClick={() => deleteRouteMutation.mutate(route.id)}
+                            disabled={deleteRouteMutation.isPending}
+                            title="Remove route from team map"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        )}
+
         {/* Chat Full-Screen Overlay */}
         {showChat && (
           <div className="absolute inset-0 bg-gray-900 z-30 flex flex-col">
@@ -2466,6 +2653,72 @@ export default function LiveSharedMap() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Saved Route Dialog */}
+      <Dialog open={showImportRouteDialog} onOpenChange={setShowImportRouteDialog}>
+        <DialogContent className="max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Import Saved Route</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-2">
+            Choose one of your saved routes to share on this Team Map.
+          </p>
+          <ScrollArea className="flex-1 max-h-[50vh]">
+            {isLoadingMyRoutes ? (
+              <div className="text-center py-8 text-muted-foreground">Loading your routes...</div>
+            ) : myRoutes.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No saved routes found. Create routes on the base map first.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {myRoutes.map((route: any) => {
+                  const distance = route.totalDistance 
+                    ? `${(parseFloat(route.totalDistance) * 0.000621371).toFixed(2)} mi`
+                    : '—';
+                  const pointCount = (() => {
+                    try { return JSON.parse(route.pathCoordinates).length; } catch { return 0; }
+                  })();
+                  const alreadyImported = session?.routes?.some(
+                    (r: LiveMapRoute) => r.name === route.name && r.createdBy === user?.id
+                  );
+                  return (
+                    <div
+                      key={route.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    >
+                      <div className="flex-1 min-w-0 mr-3">
+                        <p className="font-medium truncate">{route.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {distance} · {pointCount} pts · {route.routingMode || 'direct'}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => importRouteMutation.mutate(route)}
+                        disabled={importRouteMutation.isPending || alreadyImported}
+                        variant={alreadyImported ? "outline" : "default"}
+                      >
+                        {alreadyImported ? (
+                          <>
+                            <Check className="w-4 h-4 mr-1" />
+                            Added
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Import
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>
