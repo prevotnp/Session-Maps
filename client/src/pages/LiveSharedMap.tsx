@@ -1533,177 +1533,200 @@ export default function LiveSharedMap() {
         <div className="flex-1 relative">
           <div ref={mapContainer} className="absolute inset-0" />
           
-          {/* Layer Toolbar - 2D/3D and Drone Imagery */}
-          <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20">
-            <div className="bg-[#1a1a1a] rounded-2xl px-2 py-2 flex items-center gap-1 shadow-2xl border border-white/10">
-              {/* 2D/3D Toggle */}
-              <button
-                onClick={toggle3DMode}
-                className={cn(
-                  "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
-                  is3DMode && "active ring-2 ring-primary"
-                )}
-                data-testid="button-toggle-3d"
-              >
-                {is3DMode ? <Satellite className="h-5 w-5 text-sky-400" /> : <Eye className="h-5 w-5 text-sky-400" />}
-                <span className="text-[10px] mt-0.5">{is3DMode ? '3D' : '2D'}</span>
-              </button>
-              
-              {/* Drone Imagery Dropdown */}
-              <div className="relative" ref={droneDropdownRef}>
-                <button
-                  onClick={() => setDroneDropdownOpen(!droneDropdownOpen)}
-                  className={cn(
-                    "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
-                    (droneDropdownOpen || activeDroneLayers.size > 0) && "active ring-2 ring-primary"
-                  )}
-                  data-testid="button-drone-imagery"
-                >
-                  <PiBirdFill className="h-5 w-5 text-amber-500" />
-                  <span className="text-[10px] mt-0.5 flex flex-col items-center leading-tight">
-                    <span className="flex items-center">
-                      Drone {droneDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
-                    </span>
-                    <span>Imagery</span>
-                  </span>
-                </button>
-                
-                {droneDropdownOpen && (
-                  <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
-                    <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
-                      <span className="text-xs text-white font-medium">Drone Layers</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDroneDropdownOpen(false); }}
-                        className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
-                        aria-label="Close"
-                      >
-                        <X className="h-4 w-4 text-white/70" />
-                      </button>
-                    </div>
-                    {droneImages.length === 0 ? (
-                      <div className="text-xs text-white p-3">No drone imagery available</div>
-                    ) : (
-                      <div>
-                        {droneImages.map((droneImage, index) => {
-                          const has3DModel = droneModels[droneImage.id];
-                          return (
-                            <div 
-                              key={droneImage.id} 
-                              className={`flex items-center gap-3 p-3 ${index !== droneImages.length - 1 ? 'border-b border-white/20' : ''}`}
-                            >
-                              <button
-                                onClick={() => toggleDroneLayer(droneImage, true)}
-                                className="px-4 py-1.5 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
-                                title="View 2D overlay on map"
-                              >
-                                View
-                              </button>
-                              {activeDroneLayers.has(droneImage.id) && (
-                                <button
-                                  onClick={() => toggleDroneLayer(droneImage, false)}
-                                  className="px-4 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                                  title="Hide 2D overlay from map"
+          {/* Unified Toolbar */}
+          <div className={cn(
+            "absolute left-0 right-0 px-2 sm:px-4 transition-all duration-300 bottom-1 z-20"
+          )}>
+            <div className="flex justify-center">
+              <div className="relative max-w-full">
+                <div className="bg-[#1a1a1a] rounded-2xl px-1 sm:px-2 py-2 flex items-center space-x-0.5 shadow-2xl border border-white/10">
+
+                  {/* 2D/3D Toggle */}
+                  <button
+                    onClick={toggle3DMode}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      is3DMode && "active ring-2 ring-primary"
+                    )}
+                    data-testid="button-toggle-3d"
+                  >
+                    {is3DMode ? <Satellite className="h-5 w-5 text-sky-400" /> : <Eye className="h-5 w-5 text-sky-400" />}
+                    <span className="text-[10px] mt-0.5">{is3DMode ? '3D' : '2D'}</span>
+                  </button>
+
+                  {/* Drone Imagery Dropdown */}
+                  <div className="relative" ref={droneDropdownRef}>
+                    <button
+                      onClick={() => setDroneDropdownOpen(!droneDropdownOpen)}
+                      className={cn(
+                        "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                        (droneDropdownOpen || activeDroneLayers.size > 0) && "active ring-2 ring-primary"
+                      )}
+                      data-testid="button-drone-imagery"
+                    >
+                      <PiBirdFill className="h-5 w-5 text-amber-500" />
+                      <span className="text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                        <span className="flex items-center">
+                          Drone {droneDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                        </span>
+                        <span>Imagery</span>
+                      </span>
+                    </button>
+
+                    {droneDropdownOpen && (
+                      <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
+                        <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
+                          <span className="text-xs text-white font-medium">Drone Layers</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDroneDropdownOpen(false); }}
+                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                            aria-label="Close"
+                          >
+                            <X className="h-4 w-4 text-white/70" />
+                          </button>
+                        </div>
+                        {droneImages.length === 0 ? (
+                          <div className="text-xs text-white p-3">No drone imagery available</div>
+                        ) : (
+                          <div>
+                            {droneImages.map((droneImage, index) => {
+                              const has3DModel = droneModels[droneImage.id];
+                              return (
+                                <div
+                                  key={droneImage.id}
+                                  className={`flex items-center gap-3 p-3 ${index !== droneImages.length - 1 ? 'border-b border-white/20' : ''}`}
                                 >
-                                  Hide
-                                </button>
-                              )}
-                              {has3DModel && (
-                                <button
-                                  onClick={() => setLocation(`/drone/${droneImage.id}/3d`)}
-                                  className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                                  title="Open 3D model viewer"
-                                >
-                                  3D Model
-                                </button>
-                              )}
-                              {cesiumTilesetsByDroneImage[droneImage.id] && (
-                                <button
-                                  onClick={() => setLocation(`/cesium/${cesiumTilesetsByDroneImage[droneImage.id].id}`)}
-                                  className="px-3 py-1.5 rounded text-sm font-medium bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
-                                  title="Open 3D Map viewer"
-                                >
-                                  3D Map
-                                </button>
-                              )}
-                              <span className="text-sm text-white flex-1 truncate" title={droneImage.name}>
-                                {droneImage.name}
-                              </span>
-                            </div>
-                          );
-                        })}
+                                  <button
+                                    onClick={() => toggleDroneLayer(droneImage, true)}
+                                    className="px-4 py-1.5 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+                                    title="View 2D overlay on map"
+                                  >
+                                    View
+                                  </button>
+                                  {activeDroneLayers.has(droneImage.id) && (
+                                    <button
+                                      onClick={() => toggleDroneLayer(droneImage, false)}
+                                      className="px-4 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                      title="Hide 2D overlay from map"
+                                    >
+                                      Hide
+                                    </button>
+                                  )}
+                                  {has3DModel && (
+                                    <button
+                                      onClick={() => setLocation(`/drone/${droneImage.id}/3d`)}
+                                      className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                                      title="Open 3D model viewer"
+                                    >
+                                      3D Model
+                                    </button>
+                                  )}
+                                  {cesiumTilesetsByDroneImage[droneImage.id] && (
+                                    <button
+                                      onClick={() => setLocation(`/cesium/${cesiumTilesetsByDroneImage[droneImage.id].id}`)}
+                                      className="px-3 py-1.5 rounded text-sm font-medium bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
+                                      title="Open 3D Map viewer"
+                                    >
+                                      3D Map
+                                    </button>
+                                  )}
+                                  <span className="text-sm text-white flex-1 truncate" title={droneImage.name}>
+                                    {droneImage.name}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+
+                  {/* Divider */}
+                  <div className="h-12 w-px bg-white/20 self-center"></div>
+
+                  {/* Add Waypoint */}
+                  <button
+                    onClick={() => setIsAddingPoi(!isAddingPoi)}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      isAddingPoi && "active ring-2 ring-orange-500"
+                    )}
+                    data-testid="toolbar-add-waypoint"
+                  >
+                    <MapPin className="h-5 w-5 text-orange-400" />
+                    <span className="text-[10px] mt-0.5">Waypoint</span>
+                  </button>
+
+                  {/* Draw Route */}
+                  <button
+                    onClick={() => {
+                      if (isDrawingRoute) {
+                        setDrawRoutePoints([]);
+                        drawRouteMarkersRef.current.forEach(m => m.remove());
+                        drawRouteMarkersRef.current = [];
+                      }
+                      setIsDrawingRoute(!isDrawingRoute);
+                    }}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      isDrawingRoute && "active ring-2 ring-blue-500"
+                    )}
+                    data-testid="toolbar-draw-route"
+                  >
+                    <RouteIcon className="h-5 w-5 text-blue-400" />
+                    <span className="text-[10px] mt-0.5">Route</span>
+                  </button>
+
+                  {/* My Team */}
+                  <button
+                    onClick={() => setShowMembers(!showMembers)}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      showMembers && "active ring-2 ring-green-500"
+                    )}
+                    data-testid="toolbar-members"
+                  >
+                    <Users className="h-5 w-5 text-green-400" />
+                    <span className="text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                      <span>My</span>
+                      <span>Team</span>
+                    </span>
+                  </button>
+
+                  {/* Messages */}
+                  <button
+                    onClick={() => setShowChat(!showChat)}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      showChat && "active ring-2 ring-purple-500"
+                    )}
+                    data-testid="toolbar-messages"
+                  >
+                    <MessageCircle className="h-5 w-5 text-purple-400" />
+                    <span className="text-[10px] mt-0.5">Chat</span>
+                  </button>
+
+                  {/* Measure */}
+                  <button
+                    onClick={() => {
+                      if (isMeasuring) {
+                        clearMeasurement();
+                      }
+                      setIsMeasuring(!isMeasuring);
+                    }}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                      isMeasuring && "active ring-2 ring-yellow-500"
+                    )}
+                    data-testid="toolbar-measure"
+                  >
+                    <Ruler className="h-5 w-5 text-yellow-400" />
+                    <span className="text-[10px] mt-0.5">Measure</span>
+                  </button>
+
+                </div>
               </div>
-            </div>
-          </div>
-          
-          {/* Bottom Toolbar */}
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20">
-            <div className="bg-gray-900/95 backdrop-blur-sm rounded-full px-2 py-2 flex items-center gap-1 shadow-lg border border-gray-700">
-              <Button
-                variant={isAddingPoi ? "default" : "ghost"}
-                size="sm"
-                className={`rounded-full gap-2 ${isAddingPoi ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
-                onClick={() => setIsAddingPoi(!isAddingPoi)}
-                data-testid="toolbar-add-waypoint"
-              >
-                <MapPin className="w-4 h-4" />
-                <span className="hidden sm:inline">Add Waypoint</span>
-              </Button>
-              <Button
-                variant={isDrawingRoute ? "default" : "ghost"}
-                size="sm"
-                className={`rounded-full gap-2 ${isDrawingRoute ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
-                onClick={() => {
-                  if (isDrawingRoute) {
-                    setDrawRoutePoints([]);
-                    drawRouteMarkersRef.current.forEach(m => m.remove());
-                    drawRouteMarkersRef.current = [];
-                  }
-                  setIsDrawingRoute(!isDrawingRoute);
-                }}
-                data-testid="toolbar-draw-route"
-              >
-                <RouteIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Draw Route</span>
-              </Button>
-              <Button
-                variant={showMembers ? "default" : "ghost"}
-                size="sm"
-                className="rounded-full gap-2"
-                onClick={() => setShowMembers(!showMembers)}
-                data-testid="toolbar-members"
-              >
-                <Users className="w-4 h-4" />
-                <span className="hidden sm:inline">My Team</span>
-              </Button>
-              <Button
-                variant={showChat ? "default" : "ghost"}
-                size="sm"
-                className="rounded-full gap-2"
-                onClick={() => setShowChat(!showChat)}
-                data-testid="toolbar-messages"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Messages</span>
-              </Button>
-              <Button
-                variant={isMeasuring ? "default" : "ghost"}
-                size="sm"
-                className={`rounded-full gap-2 ${isMeasuring ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
-                onClick={() => {
-                  if (isMeasuring) {
-                    clearMeasurement();
-                  }
-                  setIsMeasuring(!isMeasuring);
-                }}
-                data-testid="toolbar-measure"
-              >
-                <Ruler className="w-4 h-4" />
-                <span className="hidden sm:inline">Measure</span>
-              </Button>
             </div>
           </div>
           
