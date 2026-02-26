@@ -1160,6 +1160,14 @@ export default function LiveSharedMap() {
               heading
             }));
           }
+
+          if (map.current) {
+            addUserLocationToMap(map.current, {
+              lng: longitude,
+              lat: latitude,
+              accuracy: accuracy
+            });
+          }
         },
         (error) => {
           console.error('Geolocation error:', error);
@@ -1290,6 +1298,14 @@ export default function LiveSharedMap() {
               accuracy,
               heading
             }));
+          }
+
+          if (map.current) {
+            addUserLocationToMap(map.current, {
+              lng: longitude,
+              lat: latitude,
+              accuracy: accuracy
+            });
           }
         },
         (error) => console.error('Geolocation error:', error),
