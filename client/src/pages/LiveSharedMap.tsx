@@ -35,6 +35,7 @@ import {
   ChevronUp
 } from "lucide-react";
 import { PiBirdFill } from "react-icons/pi";
+import { cn } from "@/lib/utils";
 import type { DroneImage } from "@shared/schema";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -199,6 +200,7 @@ export default function LiveSharedMap() {
   const [is3DMode, setIs3DMode] = useState(false);
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
+  const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -215,6 +217,7 @@ export default function LiveSharedMap() {
   const sharedRouteLayersRef = useRef<string[]>([]);
   const sharedRouteMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const routeHandlersRef = useRef<Array<{ layerId: string; clickHandler: any; enterHandler: any; leaveHandler: any }>>([]);
+  const droneDropdownRef = useRef<HTMLDivElement>(null);
   
   // Track path history for each member during the session
   const [memberPaths, setMemberPaths] = useState<Map<number, [number, number][]>>(new Map());
@@ -245,7 +248,39 @@ export default function LiveSharedMap() {
   const { data: droneImages = [] } = useQuery<DroneImage[]>({
     queryKey: ['/api/drone-images']
   });
-  
+
+  useEffect(() => {
+    if (!droneDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (droneDropdownRef.current && !droneDropdownRef.current.contains(e.target as Node)) {
+        setDroneDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [droneDropdownOpen]);
+
+  useEffect(() => {
+    if (droneImages && droneImages.length > 0) {
+      droneImages.forEach(async (image) => {
+        try {
+          const response = await fetch(`/api/drone-images/${image.id}/model`);
+          setDroneModels(prev => ({ ...prev, [image.id]: response.ok }));
+        } catch {
+          setDroneModels(prev => ({ ...prev, [image.id]: false }));
+        }
+      });
+    }
+  }, [droneImages]);
+
+  const { data: cesiumTilesets = [] } = useQuery<any[]>({
+    queryKey: ['/api/cesium-tilesets'],
+  });
+  const cesiumTilesetsByDroneImage: Record<number, any> = {};
+  cesiumTilesets.forEach((t: any) => {
+    if (t.droneImageId) cesiumTilesetsByDroneImage[t.droneImageId] = t;
+  });
+
   // Get friends not already in session
   const availableFriends = friends.filter(f => 
     !session?.members.some(m => m.userId === f.friend.id)
@@ -1500,57 +1535,102 @@ export default function LiveSharedMap() {
           
           {/* Layer Toolbar - 2D/3D and Drone Imagery */}
           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20">
-            <div className="bg-gray-900/95 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-2 shadow-lg border border-gray-700">
+            <div className="bg-[#1a1a1a] rounded-2xl px-2 py-2 flex items-center gap-1 shadow-2xl border border-white/10">
               {/* 2D/3D Toggle */}
               <button
                 onClick={toggle3DMode}
-                className={`flex flex-col items-center p-2 rounded-full transition-all ${
-                  is3DMode ? 'bg-blue-500 text-white' : 'hover:bg-gray-700 text-gray-300'
-                }`}
+                className={cn(
+                  "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                  is3DMode && "active ring-2 ring-primary"
+                )}
                 data-testid="button-toggle-3d"
               >
-                {is3DMode ? <Satellite className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {is3DMode ? <Satellite className="h-5 w-5 text-sky-400" /> : <Eye className="h-5 w-5 text-sky-400" />}
                 <span className="text-[10px] mt-0.5">{is3DMode ? '3D' : '2D'}</span>
               </button>
               
               {/* Drone Imagery Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={droneDropdownRef}>
                 <button
                   onClick={() => setDroneDropdownOpen(!droneDropdownOpen)}
-                  className={`flex flex-col items-center p-2 rounded-full transition-all ${
-                    activeDroneLayers.size > 0 ? 'bg-amber-500 text-white' : 'hover:bg-gray-700 text-gray-300'
-                  }`}
+                  className={cn(
+                    "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95",
+                    (droneDropdownOpen || activeDroneLayers.size > 0) && "active ring-2 ring-primary"
+                  )}
                   data-testid="button-drone-imagery"
                 >
-                  <PiBirdFill className="w-5 h-5" />
-                  <span className="text-[10px] mt-0.5 flex items-center">
-                    Drone {droneDropdownOpen ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
+                  <PiBirdFill className="h-5 w-5 text-amber-500" />
+                  <span className="text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                    <span className="flex items-center">
+                      Drone {droneDropdownOpen ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                    </span>
+                    <span>Imagery</span>
                   </span>
                 </button>
                 
                 {droneDropdownOpen && (
-                  <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-3 min-w-52 shadow-xl border border-gray-600">
-                    <div className="text-xs text-gray-400 mb-2 font-medium">Drone Imagery Layers</div>
+                  <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
+                    <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
+                      <span className="text-xs text-white font-medium">Drone Layers</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDroneDropdownOpen(false); }}
+                        className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                        aria-label="Close"
+                      >
+                        <X className="h-4 w-4 text-white/70" />
+                      </button>
+                    </div>
                     {droneImages.length === 0 ? (
-                      <div className="text-xs text-gray-500 py-2">No drone imagery available</div>
+                      <div className="text-xs text-white p-3">No drone imagery available</div>
                     ) : (
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {droneImages.map((droneImage) => (
-                          <label 
-                            key={droneImage.id} 
-                            className="flex items-center gap-2 cursor-pointer hover:bg-gray-700/50 p-2 rounded transition-colors"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={activeDroneLayers.has(droneImage.id)}
-                              onChange={(e) => toggleDroneLayer(droneImage, e.target.checked)}
-                              className="w-4 h-4 rounded border border-gray-500 bg-transparent accent-amber-500"
-                            />
-                            <span className="text-sm text-white truncate" title={droneImage.name}>
-                              {droneImage.name.length > 22 ? droneImage.name.substring(0, 22) + '...' : droneImage.name}
-                            </span>
-                          </label>
-                        ))}
+                      <div>
+                        {droneImages.map((droneImage, index) => {
+                          const has3DModel = droneModels[droneImage.id];
+                          return (
+                            <div 
+                              key={droneImage.id} 
+                              className={`flex items-center gap-3 p-3 ${index !== droneImages.length - 1 ? 'border-b border-white/20' : ''}`}
+                            >
+                              <button
+                                onClick={() => toggleDroneLayer(droneImage, true)}
+                                className="px-4 py-1.5 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+                                title="View 2D overlay on map"
+                              >
+                                View
+                              </button>
+                              {activeDroneLayers.has(droneImage.id) && (
+                                <button
+                                  onClick={() => toggleDroneLayer(droneImage, false)}
+                                  className="px-4 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                  title="Hide 2D overlay from map"
+                                >
+                                  Hide
+                                </button>
+                              )}
+                              {has3DModel && (
+                                <button
+                                  onClick={() => setLocation(`/drone/${droneImage.id}/3d`)}
+                                  className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                                  title="Open 3D model viewer"
+                                >
+                                  3D Model
+                                </button>
+                              )}
+                              {cesiumTilesetsByDroneImage[droneImage.id] && (
+                                <button
+                                  onClick={() => setLocation(`/cesium/${cesiumTilesetsByDroneImage[droneImage.id].id}`)}
+                                  className="px-3 py-1.5 rounded text-sm font-medium bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
+                                  title="Open 3D Map viewer"
+                                >
+                                  3D Map
+                                </button>
+                              )}
+                              <span className="text-sm text-white flex-1 truncate" title={droneImage.name}>
+                                {droneImage.name}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
