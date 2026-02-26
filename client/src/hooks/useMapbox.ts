@@ -1649,6 +1649,13 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         addTrailOverlay(map, trailType);
       });
       addBaseTrailLinesAndLabels(map);
+      
+      if (userLocation) {
+        if (map.hasImage('pulsing-dot')) {
+          map.removeImage('pulsing-dot');
+        }
+        addUserLocationToMap(map, userLocation);
+      }
     });
   };
   
@@ -1668,6 +1675,15 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const flyToUserLocation = () => {
     if (!mapRef.current) return;
     
+    if (userLocation) {
+      mapRef.current.flyTo({
+        center: [userLocation.lng, userLocation.lat],
+        zoom: Math.max(mapRef.current.getZoom(), 14),
+        essential: true
+      });
+      return;
+    }
+    
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -1680,11 +1696,6 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         },
         (error) => {
           console.error('Error getting location:', error);
-          // Fallback to Mt. Rainier
-          mapRef.current?.flyTo({
-            center: [-121.7603, 46.8523],
-            zoom: 12
-          });
         }
       );
     }
@@ -2003,17 +2014,20 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     if (mapRef.current && isMapReady) {
       const map = mapRef.current;
       
-      if (map.getLayer('user-location-circle')) {
-        map.removeLayer('user-location-circle');
+      if (map.getLayer('user-location')) {
+        map.removeLayer('user-location');
       }
-      if (map.getLayer('user-location-dot')) {
-        map.removeLayer('user-location-dot');
+      if (map.getLayer('location-accuracy')) {
+        map.removeLayer('location-accuracy');
       }
-      if (map.getLayer('user-location-pulse')) {
-        map.removeLayer('user-location-pulse');
+      if (map.getSource('location-accuracy')) {
+        map.removeSource('location-accuracy');
       }
       if (map.getSource('user-location')) {
         map.removeSource('user-location');
+      }
+      if (map.hasImage('pulsing-dot')) {
+        map.removeImage('pulsing-dot');
       }
     }
   };

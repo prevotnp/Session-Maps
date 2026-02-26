@@ -10,7 +10,6 @@ import LocationSharingModal from './modals/LocationSharingModal';
 import RouteBuilderModal from './modals/RouteBuilderModal';
 import OfflineModal from './modals/OfflineModal';
 import { WaypointEditModal } from './modals/WaypointEditModal';
-import LocationPermissionPrompt from './LocationPermissionPrompt';
 import DroneAdjustmentControls from './DroneAdjustmentControls';
 import { RouteSummaryPanel } from './RouteSummaryPanel';
 import LiveMapSessionModal from './modals/LiveMapSessionModal';
@@ -60,7 +59,6 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [showLocationSharingModal, setShowLocationSharingModal] = useState(false);
@@ -276,16 +274,10 @@ const MapView: React.FC<MapViewProps> = ({
   
   // Center map on current location
   const handleCenterOnLocation = () => {
-    if (locationPermissionDenied) {
-      alert("Location permission is required. Please enable location services in your device settings.");
-      return;
-    }
-    
     if (!userLocation) {
-      // Show the prompt if we don't have location data yet
-      setShowLocationPrompt(true);
+      startLocationTracking();
+      flyToUserLocation();
     } else {
-      // We already have permission, so fly to the location
       flyToUserLocation();
     }
   };
@@ -1103,68 +1095,20 @@ const MapView: React.FC<MapViewProps> = ({
     }
   }, [isMapReady, map, droneImages]);
 
-  // Check for location permissions
-  const checkLocationPermission = async () => {
-    try {
-      // If permission was explicitly denied before, don't ask again
-      if (locationPermissionDenied) return;
-      
-      const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
-      
-      if (permission.state === 'granted') {
-        // Permission already granted, start tracking
-        startLocationTracking();
-      } else if (permission.state === 'prompt') {
-        // Need to request permission
-        setShowLocationPrompt(true);
-      } else if (permission.state === 'denied') {
-        setLocationPermissionDenied(true);
-      }
-    } catch (error) {
-      // Browser might not support permissions API, show the prompt
-      setShowLocationPrompt(true);
-    }
-  };
-  
-  // Request location permission
-  const handleRequestPermission = () => {
-    setShowLocationPrompt(false);
-    
-    // This will trigger the browser's permission prompt
-    navigator.geolocation.getCurrentPosition(
-      () => {
-        // Success - permission granted
-        startLocationTracking();
-      },
-      (error) => {
-        // Error - permission denied or other error
-        console.error("Error requesting location permission:", error);
-        setLocationPermissionDenied(true);
-      }
-    );
-  };
-  
-  // Decline location permission
-  const handleCancelPermission = () => {
-    setShowLocationPrompt(false);
-    setLocationPermissionDenied(true);
-  };
-  
   // Initialize map on component mount
   useEffect(() => {
     if (mapContainerRef.current) {
       initializeMap();
     }
-    
-    // Check location permission on mount
-    checkLocationPermission();
-    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
-  // We're not auto-starting location tracking when map is ready anymore
-  // Instead, we wait for explicit user permission via the permission prompt
-  
+
+  // Auto-start location tracking when map is ready
+  useEffect(() => {
+    if (!isMapReady) return;
+    startLocationTracking();
+  }, [isMapReady]);
+
   // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -2228,7 +2172,7 @@ const MapView: React.FC<MapViewProps> = ({
       <MapControls 
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
-        onMyLocation={flyToUserLocation}
+        onMyLocation={handleCenterOnLocation}
         onResetNorth={resetNorth}
         onToggleTerrain={toggleTerrain}
       />
@@ -2256,12 +2200,7 @@ const MapView: React.FC<MapViewProps> = ({
       
 
       
-      {/* Location Permission Prompt */}
-      <LocationPermissionPrompt
-        isOpen={showLocationPrompt}
-        onRequestPermission={handleRequestPermission}
-        onCancel={handleCancelPermission}
-      />
+      
       
       {/* Drone Adjustment Controls */}
       <DroneAdjustmentControls

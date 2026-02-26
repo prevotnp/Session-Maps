@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { PiBirdFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
+import { addUserLocationToMap } from "@/lib/mapUtils";
 import type { DroneImage } from "@shared/schema";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
