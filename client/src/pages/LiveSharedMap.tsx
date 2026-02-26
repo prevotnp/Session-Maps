@@ -1491,8 +1491,9 @@ export default function LiveSharedMap() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 z-10">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setLocation("/")}>
+          <Button variant="ghost" size="icon" className="flex flex-col items-center h-auto py-1" onClick={() => setLocation("/")}>
             <ArrowLeft className="w-5 h-5" />
+            <span className="text-[9px] leading-tight mt-0.5">Base Map</span>
           </Button>
           <div>
             <h1 className="text-lg font-semibold text-white">
