@@ -1536,7 +1536,7 @@ export default function LiveSharedMap() {
           {/* Unified Toolbar */}
           <div className={cn(
             "absolute left-0 right-0 px-2 sm:px-4 transition-all duration-300 z-20"
-          )} style={{ bottom: 'max(4px, env(safe-area-inset-bottom, 4px))' }}>
+          )} style={{ bottom: 'calc(max(4px, env(safe-area-inset-bottom, 4px)) + 34px)' }}>
             <div className="flex justify-center">
               <div className="relative max-w-full">
                 <div className="bg-[#1a1a1a] rounded-2xl px-1 sm:px-2 py-2 flex items-center space-x-0.5 shadow-2xl border border-white/10">
