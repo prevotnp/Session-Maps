@@ -1574,7 +1574,7 @@ export default function LiveSharedMap() {
                     </button>
 
                     {droneDropdownOpen && (
-                      <div className="fixed bottom-[76px] left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50">
+                      <div className="fixed left-2 right-2 sm:absolute sm:bottom-full sm:mb-2 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-[#1a1a1a] rounded-lg overflow-hidden w-auto sm:w-auto sm:min-w-72 max-w-sm shadow-2xl border border-white/20 z-50" style={{ bottom: 'calc(max(4px, env(safe-area-inset-bottom, 4px)) + 34px + 80px)' }}>
                         <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
                           <span className="text-xs text-white font-medium">Drone Layers</span>
                           <button
