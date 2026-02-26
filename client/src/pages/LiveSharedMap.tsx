@@ -1212,29 +1212,53 @@ export default function LiveSharedMap() {
     
     if (userId === user?.id) return;
     
+    const member = session.members.find(m => m.userId === userId);
+    const memberName = member?.user?.username || member?.user?.fullName || `User ${userId}`;
+    
     const existingMarker = memberMarkersRef.current.get(userId);
     if (existingMarker) {
       existingMarker.setLngLat([lng, lat]);
-      // Update marker color if needed
-      const el = existingMarker.getElement();
-      if (el) {
-        el.style.background = color;
+      const dot = existingMarker.getElement()?.querySelector('.member-dot') as HTMLElement;
+      if (dot) {
+        dot.style.background = color;
       }
     } else {
-      // Create colored marker for member with pulsing animation for current user
-      const el = document.createElement('div');
-      el.className = 'member-marker';
-      el.style.cssText = `
+      const container = document.createElement('div');
+      container.className = 'member-marker';
+      container.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+      `;
+
+      const dot = document.createElement('div');
+      dot.className = 'member-dot';
+      dot.style.cssText = `
         width: 24px;
         height: 24px;
         background: ${color};
         border: 3px solid white;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        cursor: pointer;
       `;
+
+      const label = document.createElement('div');
+      label.textContent = memberName;
+      label.style.cssText = `
+        font-size: 10px;
+        font-weight: 600;
+        color: white;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.6);
+        white-space: nowrap;
+        margin-top: 2px;
+        pointer-events: none;
+      `;
+
+      container.appendChild(dot);
+      container.appendChild(label);
       
-      const marker = new mapboxgl.Marker(el)
+      const marker = new mapboxgl.Marker({ element: container, anchor: 'top' })
         .setLngLat([lng, lat])
         .addTo(map.current);
       
