@@ -205,6 +205,7 @@ export default function LiveSharedMap() {
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
   const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
+  const [mapReady, setMapReady] = useState(false);
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -649,17 +650,21 @@ export default function LiveSharedMap() {
     
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
     
+    map.current.on('load', () => {
+      setMapReady(true);
+    });
+    
     return () => {
       if (map.current) {
         map.current.remove();
         map.current = null;
         mapInitialized.current = false;
-        // Clear marker refs when map is destroyed
+        setMapReady(false);
         memberMarkersRef.current.clear();
         poiMarkersRef.current.clear();
       }
     };
-  }, [session?.id]); // Only depend on session ID, not entire session object
+  }, [session?.id]);
   
   // Handle map click for POI creation or measurement
   useEffect(() => {
@@ -846,7 +851,7 @@ export default function LiveSharedMap() {
   
   // Draw route path on map
   useEffect(() => {
-    if (!map.current) return;
+    if (!map.current || !mapReady) return;
     const m = map.current;
     
     if (m.getLayer('draw-route-line')) m.removeLayer('draw-route-line');
@@ -919,7 +924,7 @@ export default function LiveSharedMap() {
   
   // Render shared routes on map
   useEffect(() => {
-    if (!session?.routes || !map.current) return;
+    if (!session?.routes || !map.current || !mapReady) return;
     const m = map.current;
     
     routeHandlersRef.current.forEach(({ layerId, clickHandler, enterHandler, leaveHandler }) => {
@@ -1023,7 +1028,7 @@ export default function LiveSharedMap() {
       sharedRouteMarkersRef.current.forEach(marker => marker.remove());
       sharedRouteMarkersRef.current = [];
     };
-  }, [session?.routes]);
+  }, [session?.routes, mapReady]);
   
   // Render edit mode markers and line for shared route editing
   useEffect(() => {
@@ -1523,7 +1528,7 @@ export default function LiveSharedMap() {
   
   // Draw path lines for each member on the map
   useEffect(() => {
-    if (!map.current || !session?.members) return;
+    if (!map.current || !session?.members || !mapReady) return;
     
     const m = map.current;
     
