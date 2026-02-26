@@ -167,9 +167,12 @@ export interface IStorage {
   
   // Friendship operations
   createFriendship(friendship: InsertFriendship): Promise<Friendship>;
-  getFriendships(userId: number): Promise<(Friendship & { friend: User })[]>;
+  getFriendships(userId: number): Promise<(Friendship & { friend: User & { locationHidden?: boolean } })[]>;
   areFriends(userAId: number, userBId: number): Promise<boolean>;
   deleteFriendship(userId: number, friendId: number): Promise<boolean>;
+  getFriendIdsForLocationBroadcast(userId: number): Promise<number[]>;
+  toggleFriendLocationHidden(userId: number, friendId: number, hidden: boolean): Promise<boolean>;
+  updateUserLocationSharing(userId: number, enabled: boolean): Promise<void>;
   
   // User search operations
   searchUsers(query: string, currentUserId: number): Promise<User[]>;

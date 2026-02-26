@@ -3530,10 +3530,10 @@ Response JSON format:
           }
           
           try {
-            const acceptedShares = await dbStorage.getLocationSharesByUser(userId);
-            const friendIds = acceptedShares
-              .filter((share: any) => share.status === 'accepted')
-              .map((share: any) => share.fromUserId === userId ? share.toUserId : share.fromUserId);
+            const sender = await dbStorage.getUser(userId);
+            if (!sender || !sender.locationSharingEnabled) return;
+            
+            const friendIds = await dbStorage.getFriendIdsForLocationBroadcast(userId);
             
             friendIds.forEach((friendId: number) => {
               const friendClient = clients.get(friendId);
@@ -4284,6 +4284,45 @@ Response JSON format:
     } catch (error) {
       console.error('Error removing friend:', error);
       res.status(500).json({ error: "Failed to remove friend" });
+    }
+  });
+
+  app.patch("/api/user/location-sharing", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = req.body;
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: "enabled must be a boolean" });
+      }
+      
+      await dbStorage.updateUserLocationSharing(req.user!.id, enabled);
+      res.json({ message: "Location sharing preference updated", enabled });
+    } catch (error) {
+      console.error('Error updating location sharing:', error);
+      res.status(500).json({ error: "Failed to update location sharing" });
+    }
+  });
+
+  app.patch("/api/friends/:friendId/location-sharing", isAuthenticated, async (req: Request, res: Response) => {
+    const friendId = parseId(req.params.friendId);
+    if (!friendId) {
+      return res.status(400).json({ message: "Invalid friend ID" });
+    }
+    
+    try {
+      const { hidden } = req.body;
+      if (typeof hidden !== 'boolean') {
+        return res.status(400).json({ error: "hidden must be a boolean" });
+      }
+      
+      const success = await dbStorage.toggleFriendLocationHidden(req.user!.id, friendId, hidden);
+      if (!success) {
+        return res.status(404).json({ error: "Friendship not found" });
+      }
+      
+      res.json({ message: "Friend location sharing updated", hidden });
+    } catch (error) {
+      console.error('Error updating friend location sharing:', error);
+      res.status(500).json({ error: "Failed to update friend location sharing" });
     }
   });
 

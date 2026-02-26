@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useBackgroundResilience } from "@/hooks/useBackgroundResilience";
+import { useAuth } from "@/hooks/useAuth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Users, UserPlus, Bell, Search as SearchIcon, X, Check, UserMinus, Eye, MapPin } from "lucide-react";
 import type { User } from "@shared/schema";
@@ -33,99 +33,26 @@ interface FriendRequest {
 
 export function FriendsModal({ isOpen, onClose, onViewProfile }: FriendsModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLocationSharing, setIsLocationSharing] = useState(false);
-  const watchIdRef = useRef<number | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const { user } = useAuth();
+  const isLocationSharing = (user as any)?.locationSharingEnabled ?? true;
   const { toast } = useToast();
 
-  // Initialize WebSocket connection for location sharing
-  useEffect(() => {
-    if (isLocationSharing) {
-      // Connect to WebSocket
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      wsRef.current = new WebSocket(wsUrl);
-      
-      wsRef.current.onopen = () => {
-        // Start watching position
-        if (navigator.geolocation) {
-          watchIdRef.current = navigator.geolocation.watchPosition(
-            (position) => {
-              if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({
-                  type: 'location_update',
-                  latitude: position.coords.latitude,
-                  longitude: position.coords.longitude
-                }));
-              }
-            },
-            (error) => {
-              console.error('Geolocation error:', error);
-              toast({ title: 'Location error', description: 'Could not access your location', variant: 'destructive' });
-              setIsLocationSharing(false);
-            },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-          );
-        }
-      };
-    } else {
-      // Clean up
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+  const toggleGlobalLocationMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      await apiRequest('PATCH', '/api/user/location-sharing', { enabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
     }
+  });
 
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [isLocationSharing, toast]);
-
-  const handleFriendsLocationResume = useCallback(() => {
-    if (!isLocationSharing) return;
-
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
+  const toggleFriendLocationMutation = useMutation({
+    mutationFn: async ({ friendId, hidden }: { friendId: number; hidden: boolean }) => {
+      await apiRequest('PATCH', `/api/friends/${friendId}/location-sharing`, { hidden });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/friends'] });
     }
-
-    if (navigator.geolocation) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (position) => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              type: 'location_update',
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            }));
-          }
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-          setIsLocationSharing(false);
-        },
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
-      );
-    }
-
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      wsRef.current = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    }
-  }, [isLocationSharing]);
-
-  useBackgroundResilience({
-    isActive: isLocationSharing,
-    onForegroundResume: handleFriendsLocationResume,
-    label: 'FriendsLocationSharing',
   });
 
   // Fetch friends list
@@ -273,16 +200,22 @@ export function FriendsModal({ isOpen, onClose, onViewProfile }: FriendsModalPro
         <div className="flex items-center justify-between p-3 mb-3 bg-muted/50 rounded-lg border">
           <div className="flex items-center gap-2">
             <MapPin className={`h-5 w-5 ${isLocationSharing ? 'text-primary' : 'text-muted-foreground'}`} />
-            <Label htmlFor="location-toggle" className="font-medium cursor-pointer">
-              Share My Location
-            </Label>
+            <div className="flex flex-col">
+              <Label htmlFor="location-toggle" className="font-medium cursor-pointer">
+                Share My Location
+              </Label>
+              <span className="text-xs text-muted-foreground">
+                {isLocationSharing ? 'Friends can see where you are' : 'Your location is hidden from all friends'}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs font-medium ${!isLocationSharing ? 'text-foreground' : 'text-muted-foreground'}`}>Off</span>
             <Switch
               id="location-toggle"
               checked={isLocationSharing}
-              onCheckedChange={setIsLocationSharing}
+              onCheckedChange={(checked) => toggleGlobalLocationMutation.mutate(checked)}
+              disabled={toggleGlobalLocationMutation.isPending}
               data-testid="switch-location-sharing"
             />
             <span className={`text-xs font-medium ${isLocationSharing ? 'text-primary' : 'text-muted-foreground'}`}>On</span>
@@ -317,41 +250,63 @@ export function FriendsModal({ isOpen, onClose, onViewProfile }: FriendsModalPro
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {friends.map((friendship) => (
-                    <div
-                      key={friendship.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50"
-                      data-testid={`friend-item-${friendship.friend.id}`}
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium">{friendship.friend.fullName || friendship.friend.username}</div>
-                        <div className="text-sm text-muted-foreground">@{friendship.friend.username}</div>
+                  {friends.map((friendship: any) => {
+                    const isHidden = friendship.locationHidden ?? false;
+                    const isSharingWithFriend = isLocationSharing && !isHidden;
+                    
+                    return (
+                      <div
+                        key={friendship.id}
+                        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50"
+                        data-testid={`friend-item-${friendship.friend.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{friendship.friend.fullName || friendship.friend.username}</div>
+                          <div className="text-sm text-muted-foreground">@{friendship.friend.username}</div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <MapPin className={`h-4 w-4 ${isSharingWithFriend ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <Switch
+                            checked={!isHidden}
+                            onCheckedChange={(checked) => {
+                              toggleFriendLocationMutation.mutate({
+                                friendId: friendship.friend.id,
+                                hidden: !checked
+                              });
+                            }}
+                            disabled={!isLocationSharing || toggleFriendLocationMutation.isPending}
+                            className="scale-75"
+                            data-testid={`switch-friend-location-${friendship.friend.id}`}
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              onViewProfile(friendship.friend.username);
+                              onClose();
+                            }}
+                            data-testid={`button-view-profile-${friendship.friend.id}`}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Profile
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeFriendMutation.mutate(friendship.friend.id)}
+                            disabled={removeFriendMutation.isPending}
+                            data-testid={`button-remove-friend-${friendship.friend.id}`}
+                          >
+                            <UserMinus className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            onViewProfile(friendship.friend.username);
-                            onClose();
-                          }}
-                          data-testid={`button-view-profile-${friendship.friend.id}`}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View Profile
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFriendMutation.mutate(friendship.friend.id)}
-                          disabled={removeFriendMutation.isPending}
-                          data-testid={`button-remove-friend-${friendship.friend.id}`}
-                        >
-                          <UserMinus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>

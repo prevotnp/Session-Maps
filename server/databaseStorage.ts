@@ -926,15 +926,80 @@ export class DatabaseStorage implements IStorage {
     
     const resultA = friendshipsA.map(f => ({
       ...f.friendships,
-      friend: f.users
+      friend: f.users,
+      locationHidden: f.friendships.locationHiddenByA
     }));
     
     const resultB = friendshipsB.map(f => ({
       ...f.friendships,
-      friend: f.users
+      friend: f.users,
+      locationHidden: f.friendships.locationHiddenByB
     }));
     
     return [...resultA, ...resultB];
+  }
+
+  async getFriendIdsForLocationBroadcast(userId: number): Promise<number[]> {
+    const friendshipsA = await db
+      .select({ friendId: friendships.userBId })
+      .from(friendships)
+      .where(and(
+        eq(friendships.userAId, userId),
+        eq(friendships.locationHiddenByA, false)
+      ));
+    
+    const friendshipsB = await db
+      .select({ friendId: friendships.userAId })
+      .from(friendships)
+      .where(and(
+        eq(friendships.userBId, userId),
+        eq(friendships.locationHiddenByB, false)
+      ));
+    
+    return [
+      ...friendshipsA.map(f => f.friendId),
+      ...friendshipsB.map(f => f.friendId)
+    ];
+  }
+
+  async toggleFriendLocationHidden(userId: number, friendId: number, hidden: boolean): Promise<boolean> {
+    const [friendshipA] = await db
+      .select()
+      .from(friendships)
+      .where(and(
+        eq(friendships.userAId, userId),
+        eq(friendships.userBId, friendId)
+      ));
+    
+    if (friendshipA) {
+      await db.update(friendships)
+        .set({ locationHiddenByA: hidden })
+        .where(eq(friendships.id, friendshipA.id));
+      return true;
+    }
+    
+    const [friendshipB] = await db
+      .select()
+      .from(friendships)
+      .where(and(
+        eq(friendships.userAId, friendId),
+        eq(friendships.userBId, userId)
+      ));
+    
+    if (friendshipB) {
+      await db.update(friendships)
+        .set({ locationHiddenByB: hidden })
+        .where(eq(friendships.id, friendshipB.id));
+      return true;
+    }
+    
+    return false;
+  }
+
+  async updateUserLocationSharing(userId: number, enabled: boolean): Promise<void> {
+    await db.update(users)
+      .set({ locationSharingEnabled: enabled })
+      .where(eq(users.id, userId));
   }
 
   async areFriends(userAId: number, userBId: number): Promise<boolean> {

@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").default(false),
   isSubscribed: boolean("is_subscribed").default(false),
   subscriptionExpiry: timestamp("subscription_expiry"),
+  locationSharingEnabled: boolean("location_sharing_enabled").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -268,6 +269,8 @@ export const friendships = pgTable("friendships", {
   id: serial("id").primaryKey(),
   userAId: integer("user_a_id").notNull().references(() => users.id),
   userBId: integer("user_b_id").notNull().references(() => users.id),
+  locationHiddenByA: boolean("location_hidden_by_a").default(false),
+  locationHiddenByB: boolean("location_hidden_by_b").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

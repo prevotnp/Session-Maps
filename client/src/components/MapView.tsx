@@ -17,6 +17,7 @@ import { useMapbox } from '@/hooks/useMapbox';
 import { useOutdoorPOIs } from '@/hooks/useOutdoorPOIs';
 import { useLocation } from '@/hooks/useLocation';
 import { useAuth } from '@/hooks/useAuth';
+import { sendLocationUpdate } from '@/lib/websocket';
 import { DroneImage, Waypoint, Route } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1108,6 +1109,18 @@ const MapView: React.FC<MapViewProps> = ({
     if (!isMapReady) return;
     startLocationTracking();
   }, [isMapReady]);
+
+  // Broadcast location to friends when location sharing is enabled
+  useEffect(() => {
+    if (!userLocation) return;
+    if (!(rawUser as any)?.locationSharingEnabled) return;
+    
+    sendLocationUpdate({
+      latitude: userLocation.lat,
+      longitude: userLocation.lng,
+      altitude: null
+    });
+  }, [userLocation, (rawUser as any)?.locationSharingEnabled]);
 
   // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
