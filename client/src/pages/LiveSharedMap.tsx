@@ -31,6 +31,7 @@ import {
   Check,
   Ruler,
   Eye,
+  EyeOff,
   Satellite,
   ChevronDown,
   ChevronUp
@@ -193,6 +194,7 @@ export default function LiveSharedMap() {
   const [newRouteName, setNewRouteName] = useState("");
   const [showRoutes, setShowRoutes] = useState(false);
   const [showImportRouteDialog, setShowImportRouteDialog] = useState(false);
+  const [hiddenRouteIds, setHiddenRouteIds] = useState<Set<number>>(new Set());
   
   // Shared route viewing/editing state
   const [selectedSharedRoute, setSelectedSharedRoute] = useState<any | null>(null);
@@ -922,25 +924,46 @@ export default function LiveSharedMap() {
     });
   }, [drawRoutePoints]);
   
-  // Render shared routes on map
+  // Render shared routes on map — incremental approach
   useEffect(() => {
     if (!session?.routes || !map.current || !mapReady) return;
     const m = map.current;
     
-    routeHandlersRef.current.forEach(({ layerId, clickHandler, enterHandler, leaveHandler }) => {
-      if (m.getLayer(layerId)) {
-        m.off('click', layerId, clickHandler);
-        m.off('mouseenter', layerId, enterHandler);
-        m.off('mouseleave', layerId, leaveHandler);
+    if (!m.isStyleLoaded()) {
+      const onStyleData = () => {
+        m.off('styledata', onStyleData);
+        setHiddenRouteIds(prev => new Set(prev));
+      };
+      m.once('styledata', onStyleData);
+      return;
+    }
+    
+    const currentRouteIds = new Set(session.routes.map(r => r.id));
+    
+    const existingSourceIds = [...sharedRouteLayersRef.current];
+    existingSourceIds.forEach(sourceId => {
+      const routeId = parseInt(sourceId.replace('shared-route-', ''));
+      if (!currentRouteIds.has(routeId)) {
+        const layerId = `shared-route-line-${routeId}`;
+        const handlerIdx = routeHandlersRef.current.findIndex(h => h.layerId === layerId);
+        if (handlerIdx !== -1) {
+          const { clickHandler, enterHandler, leaveHandler } = routeHandlersRef.current[handlerIdx];
+          if (m.getLayer(layerId)) {
+            m.off('click', layerId, clickHandler);
+            m.off('mouseenter', layerId, enterHandler);
+            m.off('mouseleave', layerId, leaveHandler);
+          }
+          routeHandlersRef.current.splice(handlerIdx, 1);
+        }
+        try {
+          if (m.getLayer(layerId)) m.removeLayer(layerId);
+          if (m.getSource(sourceId)) m.removeSource(sourceId);
+        } catch (e) {
+          console.warn('Error removing route layer:', e);
+        }
+        sharedRouteLayersRef.current = sharedRouteLayersRef.current.filter(s => s !== sourceId);
       }
     });
-    routeHandlersRef.current = [];
-    sharedRouteLayersRef.current.forEach(sourceId => {
-      const layerId = sourceId.replace('shared-route-', 'shared-route-line-');
-      if (m.getLayer(layerId)) m.removeLayer(layerId);
-      if (m.getSource(sourceId)) m.removeSource(sourceId);
-    });
-    sharedRouteLayersRef.current = [];
     
     sharedRouteMarkersRef.current.forEach(marker => marker.remove());
     sharedRouteMarkersRef.current = [];
@@ -948,87 +971,103 @@ export default function LiveSharedMap() {
     session.routes.forEach(route => {
       const sourceId = `shared-route-${route.id}`;
       const layerId = `shared-route-line-${route.id}`;
+      const isHidden = hiddenRouteIds.has(route.id);
       
       try {
         const coords: { lat: number; lng: number }[] = JSON.parse(route.pathCoordinates);
         if (coords.length < 2) return;
         
         const lngLatCoords = coords.map(c => [c.lng, c.lat] as [number, number]);
-        
-        m.addSource(sourceId, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates: lngLatCoords
-            }
-          }
-        });
-        
-        m.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': getMemberColor(route.createdBy, session.members, user?.id),
-            'line-width': 3,
-            'line-opacity': 0.8
-          }
-        });
-        
-        const clickHandler = (e: mapboxgl.MapLayerMouseEvent) => {
-          e.originalEvent.stopPropagation();
-          setSelectedSharedRoute(route);
-        };
-        const enterHandler = () => { m.getCanvas().style.cursor = 'pointer'; };
-        const leaveHandler = () => { m.getCanvas().style.cursor = ''; };
-        m.on('click', layerId, clickHandler);
-        m.on('mouseenter', layerId, enterHandler);
-        m.on('mouseleave', layerId, leaveHandler);
-        
-        sharedRouteLayersRef.current.push(sourceId);
-        routeHandlersRef.current.push({ layerId, clickHandler, enterHandler, leaveHandler });
-        
         const routeColor = getMemberColor(route.createdBy, session.members, user?.id);
-        const startEl = document.createElement('div');
-        startEl.style.cssText = `width:12px;height:12px;background:${routeColor};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
-        const startMarker = new mapboxgl.Marker({ element: startEl })
-          .setLngLat(lngLatCoords[0])
-          .addTo(m);
-        sharedRouteMarkersRef.current.push(startMarker);
         
-        const endEl = document.createElement('div');
-        endEl.style.cssText = `width:12px;height:12px;background:#ef4444;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
-        const endMarker = new mapboxgl.Marker({ element: endEl })
-          .setLngLat(lngLatCoords[lngLatCoords.length - 1])
-          .addTo(m);
-        sharedRouteMarkersRef.current.push(endMarker);
+        const geojsonData: GeoJSON.Feature<GeoJSON.LineString> = {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: lngLatCoords
+          }
+        };
+        
+        if (m.getSource(sourceId)) {
+          (m.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojsonData);
+          if (m.getLayer(layerId)) {
+            m.setLayoutProperty(layerId, 'visibility', isHidden ? 'none' : 'visible');
+          }
+        } else {
+          m.addSource(sourceId, { type: 'geojson', data: geojsonData });
+          
+          m.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            layout: {
+              'visibility': isHidden ? 'none' : 'visible'
+            },
+            paint: {
+              'line-color': routeColor,
+              'line-width': 3,
+              'line-opacity': 0.8
+            }
+          });
+          
+          const clickHandler = (e: mapboxgl.MapLayerMouseEvent) => {
+            e.originalEvent.stopPropagation();
+            setSelectedSharedRoute(route);
+          };
+          const enterHandler = () => { m.getCanvas().style.cursor = 'pointer'; };
+          const leaveHandler = () => { m.getCanvas().style.cursor = ''; };
+          m.on('click', layerId, clickHandler);
+          m.on('mouseenter', layerId, enterHandler);
+          m.on('mouseleave', layerId, leaveHandler);
+          
+          sharedRouteLayersRef.current.push(sourceId);
+          routeHandlersRef.current.push({ layerId, clickHandler, enterHandler, leaveHandler });
+        }
+        
+        if (!isHidden) {
+          const startEl = document.createElement('div');
+          startEl.style.cssText = `width:12px;height:12px;background:${routeColor};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
+          const startMarker = new mapboxgl.Marker({ element: startEl })
+            .setLngLat(lngLatCoords[0])
+            .addTo(m);
+          sharedRouteMarkersRef.current.push(startMarker);
+          
+          const endEl = document.createElement('div');
+          endEl.style.cssText = `width:12px;height:12px;background:#ef4444;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);`;
+          const endMarker = new mapboxgl.Marker({ element: endEl })
+            .setLngLat(lngLatCoords[lngLatCoords.length - 1])
+            .addTo(m);
+          sharedRouteMarkersRef.current.push(endMarker);
+        }
       } catch (e) {
-        console.error('Failed to parse route coordinates:', e);
+        console.error(`Failed to render route ${route.id} "${route.name}":`, e);
       }
     });
     
     return () => {
-      routeHandlersRef.current.forEach(({ layerId, clickHandler, enterHandler, leaveHandler }) => {
-        if (m.getLayer(layerId)) {
-          m.off('click', layerId, clickHandler);
-          m.off('mouseenter', layerId, enterHandler);
-          m.off('mouseleave', layerId, leaveHandler);
-        }
-      });
-      routeHandlersRef.current = [];
-      sharedRouteLayersRef.current.forEach(sourceId => {
-        const layerId = sourceId.replace('shared-route-', 'shared-route-line-');
-        if (m.getLayer(layerId)) m.removeLayer(layerId);
-        if (m.getSource(sourceId)) m.removeSource(sourceId);
-      });
-      sharedRouteLayersRef.current = [];
-      sharedRouteMarkersRef.current.forEach(marker => marker.remove());
-      sharedRouteMarkersRef.current = [];
+      try {
+        routeHandlersRef.current.forEach(({ layerId, clickHandler, enterHandler, leaveHandler }) => {
+          if (m.getLayer(layerId)) {
+            m.off('click', layerId, clickHandler);
+            m.off('mouseenter', layerId, enterHandler);
+            m.off('mouseleave', layerId, leaveHandler);
+          }
+        });
+        routeHandlersRef.current = [];
+        sharedRouteLayersRef.current.forEach(sourceId => {
+          const layerId = sourceId.replace('shared-route-', 'shared-route-line-');
+          if (m.getLayer(layerId)) m.removeLayer(layerId);
+          if (m.getSource(sourceId)) m.removeSource(sourceId);
+        });
+        sharedRouteLayersRef.current = [];
+        sharedRouteMarkersRef.current.forEach(marker => marker.remove());
+        sharedRouteMarkersRef.current = [];
+      } catch (e) {
+        // Map may already be destroyed on unmount
+      }
     };
-  }, [session?.routes, mapReady]);
+  }, [session?.routes, mapReady, hiddenRouteIds, user?.id]);
   
   // Render edit mode markers and line for shared route editing
   useEffect(() => {
@@ -2355,28 +2394,50 @@ export default function LiveSharedMap() {
               </Button>
             </div>
 
-            <div className="p-4 border-b border-gray-700 flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowRoutes(false);
-                  setIsDrawingRoute(true);
-                }}
-                disabled={isSessionEnded}
-              >
-                <RouteIcon className="w-4 h-4 mr-2" />
-                Draw New Route
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowImportRouteDialog(true)}
-                disabled={isSessionEnded}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Import Saved
-              </Button>
+            <div className="p-4 border-b border-gray-700 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowRoutes(false);
+                    setIsDrawingRoute(true);
+                  }}
+                  disabled={isSessionEnded}
+                >
+                  <RouteIcon className="w-4 h-4 mr-2" />
+                  Draw New Route
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowImportRouteDialog(true)}
+                  disabled={isSessionEnded}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Import Saved
+                </Button>
+              </div>
+              {session?.routes && session.routes.length > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="w-full text-gray-400 hover:text-white"
+                  onClick={() => {
+                    if (hiddenRouteIds.size === 0) {
+                      setHiddenRouteIds(new Set(session.routes.map((r: LiveMapRoute) => r.id)));
+                    } else {
+                      setHiddenRouteIds(new Set());
+                    }
+                  }}
+                >
+                  {hiddenRouteIds.size === 0 ? (
+                    <><EyeOff className="w-4 h-4 mr-2" />Hide All Routes</>
+                  ) : (
+                    <><Eye className="w-4 h-4 mr-2" />Show All Routes</>
+                  )}
+                </Button>
+              )}
             </div>
 
             <ScrollArea className="flex-1 p-4">
@@ -2390,6 +2451,7 @@ export default function LiveSharedMap() {
                 <div className="space-y-3">
                   {session.routes.map((route: LiveMapRoute) => {
                     const color = getMemberColor(route.createdBy, session.members, user?.id);
+                    const isHidden = hiddenRouteIds.has(route.id);
                     const distance = (() => {
                       try {
                         const coords: {lat: number; lng: number}[] = JSON.parse(route.pathCoordinates);
@@ -2403,10 +2465,35 @@ export default function LiveSharedMap() {
                     const canManage = route.createdBy === user?.id || isOwner;
 
                     return (
-                      <div key={route.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-800">
-                        <div className="w-4 h-4 rounded-full shrink-0 border-2 border-white/30" style={{ background: color }} />
+                      <div key={route.id} className={`flex items-center gap-3 p-3 rounded-xl ${isHidden ? 'bg-gray-800/50' : 'bg-gray-800'}`}>
+                        <button
+                          className={`shrink-0 p-1.5 rounded-lg transition-colors ${
+                            isHidden 
+                              ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-700' 
+                              : 'text-emerald-400 hover:text-emerald-300 hover:bg-gray-700'
+                          }`}
+                          onClick={() => {
+                            setHiddenRouteIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(route.id)) {
+                                next.delete(route.id);
+                              } else {
+                                next.add(route.id);
+                              }
+                              return next;
+                            });
+                          }}
+                          title={isHidden ? 'Show route on map' : 'Hide route from map'}
+                        >
+                          {isHidden ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
 
-                        <div className="flex-1 min-w-0">
+                        <div 
+                          className={`w-4 h-4 rounded-full shrink-0 border-2 border-white/30 ${isHidden ? 'opacity-30' : ''}`} 
+                          style={{ background: color }} 
+                        />
+
+                        <div className={`flex-1 min-w-0 ${isHidden ? 'opacity-50' : ''}`}>
                           <p className="text-white font-medium truncate">{route.name}</p>
                           <p className="text-sm text-gray-400">
                             by {route.createdByUser?.username || 'Unknown'} · {distance} · {pointCount} pts
@@ -2421,6 +2508,13 @@ export default function LiveSharedMap() {
                             try {
                               const coords: {lat: number; lng: number}[] = JSON.parse(route.pathCoordinates);
                               if (coords.length > 0) {
+                                if (hiddenRouteIds.has(route.id)) {
+                                  setHiddenRouteIds(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(route.id);
+                                    return next;
+                                  });
+                                }
                                 setShowRoutes(false);
                                 const lngs = coords.map(c => c.lng);
                                 const lats = coords.map(c => c.lat);
