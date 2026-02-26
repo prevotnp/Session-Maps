@@ -108,6 +108,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   
   const { data: pendingInvites = [] } = useQuery<LiveMapInvite[]>({
     queryKey: ['/api/live-map-invites'],
+    refetchInterval: 30000,
   });
   
   const isTopoActive = activeLayers.includes('topo');
@@ -402,7 +403,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                       </button>
                       {pendingInvites.length > 0 && (
                         <span 
-                          className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full min-w-5 h-5 flex items-center justify-center px-1 animate-pulse"
+                          className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1"
                           data-testid="badge-invites-count"
                         >
                           {pendingInvites.length}
