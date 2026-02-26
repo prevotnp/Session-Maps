@@ -25,6 +25,7 @@ import {
   Share2,
   Plus,
   Navigation,
+  Navigation2,
   X,
   UserPlus,
   Check,
@@ -210,6 +211,7 @@ export default function LiveSharedMap() {
   const memberMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const poiMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const watchIdRef = useRef<number | null>(null);
+  const userLocationRef = useRef<{ lng: number; lat: number } | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const intentionalCloseRef = useRef(false);
@@ -1168,6 +1170,7 @@ export default function LiveSharedMap() {
               accuracy: accuracy
             });
           }
+          userLocationRef.current = { lng: longitude, lat: latitude };
         },
         (error) => {
           console.error('Geolocation error:', error);
@@ -1207,6 +1210,8 @@ export default function LiveSharedMap() {
       return newPaths;
     });
     
+    if (userId === user?.id) return;
+    
     const existingMarker = memberMarkersRef.current.get(userId);
     if (existingMarker) {
       existingMarker.setLngLat([lng, lat]);
@@ -1219,16 +1224,14 @@ export default function LiveSharedMap() {
       // Create colored marker for member with pulsing animation for current user
       const el = document.createElement('div');
       el.className = 'member-marker';
-      const isCurrentUser = userId === user?.id;
       el.style.cssText = `
-        width: ${isCurrentUser ? '28px' : '24px'};
-        height: ${isCurrentUser ? '28px' : '24px'};
+        width: 24px;
+        height: 24px;
         background: ${color};
         border: 3px solid white;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         cursor: pointer;
-        ${isCurrentUser ? 'animation: pulse 2s ease-in-out infinite;' : ''}
       `;
       
       const marker = new mapboxgl.Marker(el)
@@ -1307,6 +1310,7 @@ export default function LiveSharedMap() {
               accuracy: accuracy
             });
           }
+          userLocationRef.current = { lng: longitude, lat: latitude };
         },
         (error) => console.error('Geolocation error:', error),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
@@ -1550,6 +1554,26 @@ export default function LiveSharedMap() {
         <div className="flex-1 relative">
           <div ref={mapContainer} className="absolute inset-0" />
           
+          {/* GPS Center Button */}
+          <div className="absolute top-40 right-4 z-10">
+            <button
+              onClick={() => {
+                if (userLocationRef.current && map.current) {
+                  map.current.flyTo({
+                    center: [userLocationRef.current.lng, userLocationRef.current.lat],
+                    zoom: Math.max(map.current.getZoom(), 14),
+                    essential: true
+                  });
+                }
+              }}
+              className="bg-blue-600 rounded-full p-3 min-w-[44px] min-h-[44px] backdrop-blur-sm hover:bg-blue-700 active:scale-95 transition-transform shadow-lg"
+              aria-label="Center on my location"
+              data-testid="button-my-location"
+            >
+              <Navigation2 className="h-5 w-5 text-white" />
+            </button>
+          </div>
+
           {/* Unified Toolbar */}
           <div className={cn(
             "absolute left-0 right-0 px-2 sm:px-4 transition-all duration-300 z-20"
