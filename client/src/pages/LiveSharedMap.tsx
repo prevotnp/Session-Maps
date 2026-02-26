@@ -1490,27 +1490,26 @@ export default function LiveSharedMap() {
       
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 z-10">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="flex flex-col items-center h-auto py-1" onClick={() => setLocation("/")}>
-            <ArrowLeft className="w-5 h-5" />
-            <span className="text-[9px] leading-tight mt-0.5">Base Map</span>
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-white">
-              {session.name}
-              {isSessionEnded && <span className="text-amber-400 ml-2 text-sm">(Ended)</span>}
-            </h1>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                <Share2 className="w-3 h-3 mr-1" />
-                {session.shareCode}
-              </Badge>
-              {!isSessionEnded && (
-                <Button variant="ghost" size="sm" className="h-6 px-2" onClick={handleCopyShareCode}>
-                  <Copy className="w-3 h-3" />
-                </Button>
-              )}
-            </div>
+        <Button variant="ghost" size="icon" className="flex flex-col items-center h-auto py-1 shrink-0" onClick={() => setLocation("/")}>
+          <ArrowLeft className="w-5 h-5" />
+          <span className="text-[9px] leading-tight mt-0.5">Base Map</span>
+        </Button>
+
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+          <h1 className="text-sm sm:text-lg font-semibold text-white truncate max-w-full">
+            {session.name}
+            {isSessionEnded && <span className="text-amber-400 ml-2 text-sm">(Ended)</span>}
+          </h1>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              <Share2 className="w-3 h-3 mr-1" />
+              {session.shareCode}
+            </Badge>
+            {!isSessionEnded && (
+              <Button variant="ghost" size="sm" className="h-6 px-2" onClick={handleCopyShareCode}>
+                <Copy className="w-3 h-3" />
+              </Button>
+            )}
           </div>
         </div>
         
