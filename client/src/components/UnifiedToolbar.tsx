@@ -122,8 +122,8 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   return (
     <div className={cn(
       "absolute left-0 right-0 px-2 sm:px-4 transition-all duration-300",
-      isRecordingActive ? "bottom-1 z-40" : "bottom-1 z-10"
-    )}>
+      isRecordingActive ? "z-40" : "z-10"
+    )} style={{ bottom: 'max(4px, env(safe-area-inset-bottom, 4px))' }}>
       <div className="flex justify-center">
         <div className="relative max-w-full">
           <div className="bg-[#1a1a1a] rounded-2xl px-1 sm:px-2 py-2 flex items-end space-x-0.5 sm:space-x-1 shadow-2xl border border-white/10">
