@@ -211,6 +211,8 @@ export default function LiveSharedMap() {
   const mapInitialized = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const memberMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+  const memberLastUpdateRef = useRef<Map<number, number>>(new Map());
+  const signalLostCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const poiMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const watchIdRef = useRef<number | null>(null);
   const userLocationRef = useRef<{ lng: number; lat: number } | null>(null);
@@ -1256,16 +1258,24 @@ export default function LiveSharedMap() {
     
     if (userId === user?.id) return;
     
+    memberLastUpdateRef.current.set(userId, Date.now());
+    
     const member = session.members.find(m => m.userId === userId);
     const memberName = member?.user?.username || member?.user?.fullName || `User ${userId}`;
     
     const existingMarker = memberMarkersRef.current.get(userId);
     if (existingMarker) {
       existingMarker.setLngLat([lng, lat]);
-      const dot = existingMarker.getElement()?.querySelector('.member-dot') as HTMLElement;
+      const el = existingMarker.getElement();
+      const dot = el?.querySelector('.member-dot') as HTMLElement;
       if (dot) {
         dot.style.background = color;
+        dot.style.animation = 'member-pulse 2s ease-in-out infinite';
       }
+      const lostOverlay = el?.querySelector('.signal-lost-overlay') as HTMLElement;
+      if (lostOverlay) lostOverlay.style.display = 'none';
+      const lostLabel = el?.querySelector('.signal-lost-label') as HTMLElement;
+      if (lostLabel) lostLabel.style.display = 'none';
     } else {
       const container = document.createElement('div');
       container.className = 'member-marker';
@@ -1274,7 +1284,11 @@ export default function LiveSharedMap() {
         flex-direction: column;
         align-items: center;
         cursor: pointer;
+        position: relative;
       `;
+
+      const dotWrapper = document.createElement('div');
+      dotWrapper.style.cssText = 'position: relative; display: inline-block;';
 
       const dot = document.createElement('div');
       dot.className = 'member-dot';
@@ -1285,9 +1299,35 @@ export default function LiveSharedMap() {
         border: 3px solid white;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        animation: member-pulse 2s ease-in-out infinite;
       `;
 
+      const signalLostOverlay = document.createElement('div');
+      signalLostOverlay.className = 'signal-lost-overlay';
+      signalLostOverlay.style.cssText = `
+        display: none;
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 16px;
+        height: 16px;
+        background: #ef4444;
+        border: 2px solid white;
+        border-radius: 50%;
+        z-index: 2;
+        font-size: 9px;
+        font-weight: 900;
+        color: white;
+        line-height: 12px;
+        text-align: center;
+      `;
+      signalLostOverlay.textContent = '✕';
+
+      dotWrapper.appendChild(dot);
+      dotWrapper.appendChild(signalLostOverlay);
+
       const label = document.createElement('div');
+      label.className = 'member-name-label';
       label.textContent = memberName;
       label.style.cssText = `
         font-size: 10px;
@@ -1299,8 +1339,21 @@ export default function LiveSharedMap() {
         pointer-events: none;
       `;
 
-      container.appendChild(dot);
+      const signalLostLabel = document.createElement('div');
+      signalLostLabel.className = 'signal-lost-label';
+      signalLostLabel.style.cssText = `
+        display: none;
+        font-size: 9px;
+        font-weight: 600;
+        color: #fca5a5;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+        white-space: nowrap;
+        pointer-events: none;
+      `;
+
+      container.appendChild(dotWrapper);
       container.appendChild(label);
+      container.appendChild(signalLostLabel);
       
       const marker = new mapboxgl.Marker({ element: container, anchor: 'top' })
         .setLngLat([lng, lat])
@@ -1309,6 +1362,43 @@ export default function LiveSharedMap() {
       memberMarkersRef.current.set(userId, marker);
     }
   }, [user, session?.members]);
+
+  useEffect(() => {
+    const SIGNAL_LOST_THRESHOLD = 2 * 60 * 1000;
+    
+    signalLostCheckRef.current = setInterval(() => {
+      const now = Date.now();
+      memberLastUpdateRef.current.forEach((lastUpdate, userId) => {
+        if (userId === user?.id) return;
+        const marker = memberMarkersRef.current.get(userId);
+        if (!marker) return;
+        const el = marker.getElement();
+        if (!el) return;
+        
+        const elapsed = now - lastUpdate;
+        const dot = el.querySelector('.member-dot') as HTMLElement;
+        const lostOverlay = el.querySelector('.signal-lost-overlay') as HTMLElement;
+        const lostLabel = el.querySelector('.signal-lost-label') as HTMLElement;
+        
+        if (elapsed > SIGNAL_LOST_THRESHOLD) {
+          if (dot) dot.style.animation = 'none';
+          if (lostOverlay) lostOverlay.style.display = 'block';
+          if (lostLabel) {
+            const lostTime = new Date(lastUpdate);
+            const timeStr = lostTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            lostLabel.textContent = `Signal Lost ${timeStr}`;
+            lostLabel.style.display = 'block';
+          }
+        }
+      });
+    }, 15000);
+
+    return () => {
+      if (signalLostCheckRef.current) {
+        clearInterval(signalLostCheckRef.current);
+      }
+    };
+  }, [user?.id]);
   
   const handleLiveMapResume = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
