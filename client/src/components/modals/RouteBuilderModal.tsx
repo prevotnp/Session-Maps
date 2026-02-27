@@ -1083,7 +1083,7 @@ export default function RouteBuilderModal({
     <Dialog open={isOpen} onOpenChange={handleClose} modal={false}>
       <DialogContent 
         noOverlay={!!editingRoute}
-        className="!fixed !right-0 !left-auto !top-0 !h-full !max-h-full !max-w-md !w-full !translate-x-0 !translate-y-0 !rounded-none !border-l !border-t-0 !border-b-0 !border-r-0 data-[state=open]:!slide-in-from-right data-[state=closed]:!slide-out-to-right overflow-y-auto pointer-events-auto">
+        className="!fixed !left-0 !right-0 !top-0 !h-[25vh] !max-h-[25vh] !w-full !max-w-full !translate-x-0 !translate-y-0 !rounded-none !rounded-b-xl !border-b !border-t-0 !border-l-0 !border-r-0 sm:!left-auto sm:!right-0 sm:!h-full sm:!max-h-full sm:!max-w-md sm:!rounded-none sm:!border-l sm:!border-b-0 sm:!border-r-0 data-[state=open]:!slide-in-from-top sm:data-[state=open]:!slide-in-from-right data-[state=closed]:!slide-out-to-top sm:data-[state=closed]:!slide-out-to-right overflow-y-auto pointer-events-auto">
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-2">
             <RouteIcon className="h-5 w-5" />

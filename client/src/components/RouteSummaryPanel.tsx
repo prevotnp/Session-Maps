@@ -651,10 +651,10 @@ export function RouteSummaryPanel({
 
   return (
     <div 
-      className="absolute top-4 right-4 z-50 w-72"
+      className="absolute top-2 left-2 right-2 sm:left-auto sm:top-4 sm:right-4 z-50 sm:w-72"
       data-testid="route-summary-panel"
     >
-      <div className="bg-dark/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/20 overflow-hidden max-h-[calc(100vh-120px)] overflow-y-auto">
+      <div className="bg-dark/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/20 overflow-hidden max-h-[25vh] sm:max-h-[calc(100vh-120px)] overflow-y-auto">
         <div className="p-4">
           <div className="flex items-start justify-between mb-3">
             <div className="flex-1 min-w-0">
