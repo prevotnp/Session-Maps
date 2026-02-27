@@ -2259,13 +2259,13 @@ export default function LiveSharedMap() {
                 My Team ({session.members.length})
               </h3>
               <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-10 w-10 rounded-full hover:bg-gray-700"
+                variant="outline" 
+                className="h-10 px-4 rounded-full hover:bg-gray-700 text-white border-white/30"
                 onClick={() => setShowMembers(false)}
                 data-testid="button-close-members"
               >
-                <X className="w-6 h-6 text-white" />
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Team Map
               </Button>
             </div>
             
@@ -2385,12 +2385,12 @@ export default function LiveSharedMap() {
                 Routes ({session?.routes?.length || 0})
               </h3>
               <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-10 w-10 rounded-full hover:bg-gray-700"
+                variant="outline" 
+                className="h-10 px-4 rounded-full hover:bg-gray-700 text-white border-white/30"
                 onClick={() => setShowRoutes(false)}
               >
-                <X className="w-6 h-6 text-white" />
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Team Map
               </Button>
             </div>
 
@@ -2561,13 +2561,13 @@ export default function LiveSharedMap() {
                 Messages
               </h3>
               <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-10 w-10 rounded-full hover:bg-gray-700"
+                variant="outline" 
+                className="h-10 px-4 rounded-full hover:bg-gray-700 text-white border-white/30"
                 onClick={() => setShowChat(false)}
                 data-testid="button-close-chat"
               >
-                <X className="w-6 h-6 text-white" />
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Team Map
               </Button>
             </div>
             
