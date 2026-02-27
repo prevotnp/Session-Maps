@@ -1712,9 +1712,9 @@ export default function LiveSharedMap() {
       
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 z-10">
-        <Button variant="ghost" size="icon" className="flex flex-col items-center h-auto py-1 shrink-0" onClick={() => setLocation("/")}>
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-[9px] leading-tight mt-0.5">Base Map</span>
+        <Button variant="destructive" className="h-9 px-3 rounded-full text-white font-medium shrink-0" onClick={() => setLocation("/")}>
+          <ArrowLeft className="w-4 h-4 mr-1.5" />
+          Exit Team Map
         </Button>
 
         <div className="flex-1 flex flex-col items-center justify-center min-w-0">
