@@ -247,6 +247,7 @@ export interface IStorage {
     lastMessage: { id: number; body: string; senderId: number; createdAt: Date | null };
     unreadCount: number;
   }>>;
+  deleteDirectMessage(messageId: number, userId: number): Promise<boolean>;
   getUnreadMessageCount(userId: number): Promise<number>;
 }
 

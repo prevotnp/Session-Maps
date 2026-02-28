@@ -1722,6 +1722,13 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
+  async deleteDirectMessage(messageId: number, userId: number): Promise<boolean> {
+    const [msg] = await db.select().from(directMessages).where(eq(directMessages.id, messageId));
+    if (!msg || msg.senderId !== userId) return false;
+    await db.delete(directMessages).where(eq(directMessages.id, messageId));
+    return true;
+  }
+
   async getUnreadMessageCount(userId: number): Promise<number> {
     const result = await db
       .select({ count: sql<number>`count(*)::int` })

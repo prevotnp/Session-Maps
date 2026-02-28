@@ -4462,6 +4462,24 @@ Response JSON format:
     }
   });
 
+  app.delete("/api/messages/:messageId", isAuthenticated, async (req: Request, res: Response) => {
+    const messageId = parseId(req.params.messageId);
+    if (!messageId) {
+      return res.status(400).json({ error: "Invalid message ID" });
+    }
+
+    try {
+      const deleted = await dbStorage.deleteDirectMessage(messageId, req.user!.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Message not found or not yours" });
+      }
+      res.json({ message: "Message deleted" });
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      res.status(500).json({ error: "Failed to delete message" });
+    }
+  });
+
   // ========== Live Shared Map Routes ==========
 
   // Generate a unique share code
