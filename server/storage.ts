@@ -178,7 +178,7 @@ export interface IStorage {
   searchUsers(query: string, currentUserId: number): Promise<User[]>;
   
   // Profile operations
-  getUserProfile(username: string, viewerId: number): Promise<{ user: User; routes: Route[] } | undefined>;
+  getUserProfile(username: string, viewerId: number): Promise<{ user: User; routes: Route[]; activities: Activity[]; isFriend: boolean; isOwner: boolean; publicRouteCount: number; publicActivityCount: number } | undefined>;
   
   // Live Map Session operations
   createLiveMapSession(session: InsertLiveMapSession): Promise<LiveMapSession>;

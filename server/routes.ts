@@ -4078,7 +4078,7 @@ Response JSON format:
     try {
       const users = await dbStorage.searchUsers(query, req.user!.id);
       // Remove password from response
-      const safeUsers = users.map(u => ({ ...u, password: undefined }));
+      const safeUsers = users.map(u => ({ id: u.id, username: u.username, fullName: u.fullName }));
       res.json(safeUsers);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -4336,13 +4336,27 @@ Response JSON format:
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Remove password from user object
-      const safeProfile = {
-        ...profile,
-        user: { ...profile.user, password: undefined }
+      const { isFriend, isOwner } = profile;
+      const safeUser: Record<string, any> = {
+        id: profile.user.id,
+        username: profile.user.username,
+        fullName: profile.user.fullName,
+        createdAt: profile.user.createdAt,
       };
+      if (isOwner || isFriend) {
+        safeUser.email = profile.user.email;
+        safeUser.locationSharingEnabled = (profile.user as any).locationSharingEnabled;
+      }
 
-      res.json(safeProfile);
+      res.json({
+        user: safeUser,
+        isFriend,
+        isOwner,
+        publicRouteCount: profile.publicRouteCount,
+        publicActivityCount: profile.publicActivityCount,
+        routes: profile.routes,
+        activities: profile.activities,
+      });
     } catch (error) {
       console.error('Error fetching user profile:', error);
       res.status(500).json({ error: "Failed to fetch user profile" });

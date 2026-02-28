@@ -1060,25 +1060,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Profile operations
-  async getUserProfile(username: string, viewerId: number): Promise<{ user: User; routes: Route[] } | undefined> {
+  async getUserProfile(username: string, viewerId: number): Promise<{ user: User; routes: Route[]; activities: Activity[]; isFriend: boolean; isOwner: boolean; publicRouteCount: number; publicActivityCount: number } | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     if (!user) return undefined;
 
-    // Check if viewer is friends with the profile owner
     const isFriend = await this.areFriends(viewerId, user.id);
     const isOwner = viewerId === user.id;
 
-    // Get public routes
+    if (!isOwner && !isFriend) {
+      return {
+        user,
+        routes: [],
+        activities: [],
+        isFriend: false,
+        isOwner: false,
+        publicRouteCount: 0,
+        publicActivityCount: 0
+      };
+    }
+
     let userRoutes: Route[];
+    let userActivities: Activity[];
+
     if (isOwner) {
-      // Owner can see all their routes
       userRoutes = await db
         .select()
         .from(routes)
         .where(eq(routes.userId, user.id))
         .orderBy(routes.createdAt);
+
+      userActivities = await db
+        .select()
+        .from(activities)
+        .where(eq(activities.userId, user.id))
+        .orderBy(activities.startTime);
     } else {
-      // Get public routes and routes shared with viewer
       const publicRoutes = await db
         .select()
         .from(routes)
@@ -1100,18 +1116,35 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
-      // Combine and deduplicate
       const sharedRoutesList = sharedRoutes.map(sr => sr.route);
       const allRoutes = [...publicRoutes, ...sharedRoutesList];
       const uniqueRoutes = Array.from(new Map(allRoutes.map(r => [r.id, r])).values());
       userRoutes = uniqueRoutes.sort((a, b) => 
         new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
       );
+
+      userActivities = await db
+        .select()
+        .from(activities)
+        .where(
+          and(
+            eq(activities.userId, user.id),
+            eq(activities.isPublic, true)
+          )
+        );
     }
+
+    const publicRouteCount = userRoutes.filter(r => r.isPublic).length;
+    const publicActivityCount = userActivities.filter(a => a.isPublic).length;
 
     return {
       user,
-      routes: userRoutes
+      routes: userRoutes,
+      activities: userActivities,
+      isFriend,
+      isOwner,
+      publicRouteCount,
+      publicActivityCount
     };
   }
 

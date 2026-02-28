@@ -1,9 +1,14 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { User, MapPin, Lock, Globe } from "lucide-react";
-import type { User as UserType, Route } from "@shared/schema";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { 
+  User, MapPin, Lock, Globe, 
+  Route as RouteIcon, Activity, 
+  ChevronDown, ChevronUp, Navigation 
+} from "lucide-react";
+import type { Route, Activity as ActivityType } from "@shared/schema";
 
 interface FriendProfileModalProps {
   isOpen: boolean;
@@ -12,21 +17,31 @@ interface FriendProfileModalProps {
   onViewRoute: (route: Route) => void;
 }
 
-interface UserProfile {
-  user: UserType;
+interface ProfileData {
+  user: {
+    id: number;
+    username: string;
+    fullName: string | null;
+    email?: string;
+    createdAt: string;
+  };
+  isFriend: boolean;
+  isOwner: boolean;
+  publicRouteCount: number;
+  publicActivityCount: number;
   routes: Route[];
+  activities: ActivityType[];
 }
 
 export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: FriendProfileModalProps) {
-  const { data: profile, isLoading, error } = useQuery<UserProfile>({
+  const [routesExpanded, setRoutesExpanded] = useState(true);
+  const [activitiesExpanded, setActivitiesExpanded] = useState(false);
+
+  const { data: profile, isLoading, error } = useQuery<ProfileData>({
     queryKey: ["/api/profiles", username],
     queryFn: async () => {
-      const response = await fetch(`/api/profiles/${username}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch profile');
-      }
+      const response = await fetch(`/api/profiles/${username}`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch profile');
       return response.json();
     },
     enabled: isOpen && !!username,
@@ -37,9 +52,33 @@ export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: F
     onClose();
   };
 
+  const formatDistance = (meters: string | number | null) => {
+    if (!meters) return '0 mi';
+    const m = typeof meters === 'string' ? parseFloat(meters) : meters;
+    return (m / 1609.34).toFixed(1) + ' mi';
+  };
+
+  const formatElevation = (meters: string | number | null) => {
+    if (!meters) return '0 ft';
+    const m = typeof meters === 'string' ? parseFloat(meters) : meters;
+    return Math.round(m * 3.28084).toLocaleString() + ' ft';
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '—';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
+  const userInitials = profile?.user?.fullName
+    ? profile.user.fullName.split(' ').map(n => n[0]).join('').toUpperCase()
+    : (username || '').substring(0, 2).toUpperCase();
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-gray-900 border-gray-700">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -49,112 +88,142 @@ export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: F
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-muted-foreground">Loading profile...</div>
+            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="text-destructive mb-2">Failed to load profile</div>
-            <div className="text-sm text-muted-foreground">User not found or you don't have permission to view this profile</div>
+            <div className="text-sm text-gray-500">User not found or you don't have permission</div>
+          </div>
+        ) : profile && !profile.isFriend && !profile.isOwner ? (
+          <div className="flex flex-col items-center py-8">
+            <Avatar className="h-20 w-20 mb-4">
+              <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`} alt={username} />
+              <AvatarFallback className="text-xl bg-primary text-white">{userInitials}</AvatarFallback>
+            </Avatar>
+            <h2 className="text-lg font-bold text-white">{profile.user.fullName || profile.user.username}</h2>
+            <p className="text-gray-400 mb-6">@{profile.user.username}</p>
+            <div className="flex items-center gap-2 text-gray-500 bg-gray-800 rounded-lg px-4 py-3">
+              <Lock className="h-5 w-5" />
+              <span className="text-sm">Add as a friend to see their routes and activities</span>
+            </div>
           </div>
         ) : profile ? (
-          <div className="flex-1 overflow-hidden flex flex-col">
-            {/* User Info */}
-            <div className="bg-accent/30 rounded-lg p-6 mb-4">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center">
-                  <User className="h-8 w-8 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold">{profile.user.fullName || profile.user.username}</h2>
-                  <p className="text-muted-foreground">@{profile.user.username}</p>
-                  {profile.user.email && (
-                    <p className="text-sm text-muted-foreground mt-1">{profile.user.email}</p>
-                  )}
-                </div>
+          <div className="space-y-4">
+            <div className="flex flex-col items-center py-4">
+              <Avatar className="h-20 w-20 mb-3">
+                <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`} alt={username} />
+                <AvatarFallback className="text-xl bg-primary text-white">{userInitials}</AvatarFallback>
+              </Avatar>
+              <h2 className="text-lg font-bold text-white">{profile.user.fullName || profile.user.username}</h2>
+              <p className="text-gray-400">@{profile.user.username}</p>
+              {profile.user.email && (
+                <p className="text-gray-500 text-sm mt-1">{profile.user.email}</p>
+              )}
+            </div>
+
+            <div className="flex justify-center gap-8 py-3 border-y border-gray-700">
+              <div className="text-center">
+                <div className="text-xl font-bold text-white">{profile.publicRouteCount}</div>
+                <div className="text-xs text-gray-400">Public Routes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-white">{profile.publicActivityCount}</div>
+                <div className="text-xs text-gray-400">Public Activities</div>
               </div>
             </div>
 
-            {/* Routes Section */}
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-lg">Routes</h3>
-                <div className="text-sm text-muted-foreground">
-                  {profile.routes.length} {profile.routes.length === 1 ? 'route' : 'routes'}
+            <div className="border border-gray-700 rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between p-3 text-left"
+                onClick={() => setRoutesExpanded(!routesExpanded)}
+              >
+                <div className="flex items-center gap-2">
+                  <RouteIcon className="h-4 w-4 text-blue-400" />
+                  <span className="font-medium text-white text-sm">Routes ({profile.routes.length})</span>
                 </div>
-              </div>
-
-              <ScrollArea className="flex-1">
-                {profile.routes.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <MapPin className="h-12 w-12 mb-2 opacity-50" />
-                    <p>No public routes yet</p>
-                    <p className="text-sm mt-1">This user hasn't shared any routes publicly</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 pr-4">
-                    {profile.routes.map((route) => {
-                      const distanceMeters = route.totalDistance 
-                        ? parseFloat(route.totalDistance.toString())
-                        : 0;
-                      const distanceMiles = (distanceMeters / 1609.34).toFixed(2);
-                      const elevationGainMeters = route.elevationGain 
-                        ? parseFloat(route.elevationGain.toString())
-                        : 0;
-                      const elevationGainFeet = Math.round(elevationGainMeters * 3.28084);
-
-                      return (
-                        <div
-                          key={route.id}
-                          className="border rounded-lg p-4 hover:bg-accent/30 transition-colors"
-                          data-testid={`profile-route-${route.id}`}
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold text-lg">{route.name}</h4>
-                                {route.isPublic ? (
-                                  <span title="Public"><Globe className="h-4 w-4 text-green-600" /></span>
-                                ) : (
-                                  <span title="Shared with you"><Lock className="h-4 w-4 text-yellow-600" /></span>
-                                )}
-                              </div>
-                              {route.description && (
-                                <p className="text-sm text-muted-foreground mb-2">{route.description}</p>
-                              )}
+                {routesExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+              </button>
+              {routesExpanded && (
+                <div className="border-t border-gray-700 max-h-60 overflow-y-auto">
+                  {profile.routes.length === 0 ? (
+                    <div className="text-center py-6 text-gray-500">
+                      <MapPin className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No public routes yet</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-800">
+                      {profile.routes.map((route) => (
+                        <div key={route.id} className="flex items-center gap-3 p-3 px-4" data-testid={`profile-route-${route.id}`}>
+                          {route.isPublic ? (
+                            <Globe className="h-4 w-4 text-green-500 shrink-0" />
+                          ) : (
+                            <Lock className="h-4 w-4 text-yellow-500 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-white truncate">{route.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDistance(route.totalDistance)} · {formatElevation(route.elevationGain)} · <span className="capitalize">{route.routingMode}</span>
                             </div>
                           </div>
-
-                          <div className="grid grid-cols-3 gap-3 text-sm mb-3">
-                            <div>
-                              <div className="text-muted-foreground text-xs">Distance</div>
-                              <div className="font-medium">{distanceMiles} mi</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground text-xs">Elevation Gain</div>
-                              <div className="font-medium">{elevationGainFeet} ft</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground text-xs">Type</div>
-                              <div className="font-medium capitalize">{route.routingMode}</div>
-                            </div>
-                          </div>
-
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
+                            className="h-8 shrink-0 text-blue-400 hover:text-blue-300 text-xs"
                             onClick={() => handleViewRoute(route)}
-                            className="w-full"
                             data-testid={`button-view-route-${route.id}`}
                           >
-                            <MapPin className="h-4 w-4 mr-2" />
-                            View on Map
+                            <Navigation className="h-3 w-3 mr-1" />
+                            View
                           </Button>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </ScrollArea>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="border border-gray-700 rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between p-3 text-left"
+                onClick={() => setActivitiesExpanded(!activitiesExpanded)}
+              >
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-orange-400" />
+                  <span className="font-medium text-white text-sm">Activities ({profile.activities.length})</span>
+                </div>
+                {activitiesExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+              </button>
+              {activitiesExpanded && (
+                <div className="border-t border-gray-700 max-h-60 overflow-y-auto">
+                  {profile.activities.length === 0 ? (
+                    <div className="text-center py-6 text-gray-500">
+                      <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No public activities yet</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-800">
+                      {profile.activities.map((activity) => (
+                        <div key={activity.id} className="flex items-center gap-3 p-3 px-4">
+                          {activity.isPublic ? (
+                            <Globe className="h-4 w-4 text-green-500 shrink-0" />
+                          ) : (
+                            <Lock className="h-4 w-4 text-yellow-500 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-white truncate">{activity.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDistance(activity.distanceMeters)} · {formatDuration(activity.elapsedTimeSeconds)} · <span className="capitalize">{activity.activityType}</span>
+                            </div>
+                          </div>
+                          <ChevronDown className="h-4 w-4 text-gray-500 shrink-0 -rotate-90" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ) : null}
