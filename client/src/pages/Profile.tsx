@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { DroneImage, OfflineMapArea } from '@shared/schema';
+import BottomNavigation from '@/components/BottomNavigation';
 
 const Profile: React.FC = () => {
   const { user } = useAuth();
@@ -40,7 +41,7 @@ const Profile: React.FC = () => {
 
   // Get user's drone images
   const { data: droneImages, isLoading: isDroneLoading } = useQuery<DroneImage[]>({
-    queryKey: ['/api/drone-images/user'],
+    queryKey: ['/api/drone-images'],
     enabled: !!user
   });
 
@@ -73,12 +74,15 @@ const Profile: React.FC = () => {
     : user.username.substring(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="min-h-screen bg-background" style={{ 
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))'
+    }}>
 
       {/* Profile Header */}
       <div className="relative">
         <div className="flex justify-between items-center p-4">
-          <Button variant="ghost" size="icon" className="min-w-[44px] min-h-[44px]" onClick={() => navigate('/')}>
+          <Button variant="outline" size="icon" className="min-w-[44px] min-h-[44px] border-gray-700" onClick={() => navigate('/')}>
             <ChevronLeft className="h-6 w-6" />
           </Button>
           <h1 className="text-xl font-semibold">Profile</h1>
@@ -100,7 +104,7 @@ const Profile: React.FC = () => {
       <div className="px-4 space-y-4 mb-24">
 
         {/* Drone Imagery Card */}
-        <Card>
+        <Card className="bg-gray-900 border-gray-700">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex items-center">
               <Cloud className="h-5 w-5 mr-2 text-primary" />
@@ -154,7 +158,7 @@ const Profile: React.FC = () => {
         </Card>
 
         {/* Offline Maps Card */}
-        <Card>
+        <Card className="bg-gray-900 border-gray-700">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex items-center">
               <Download className="h-5 w-5 mr-2 text-primary" />
@@ -209,6 +213,10 @@ const Profile: React.FC = () => {
           {isLoggingOut ? 'Logging out...' : 'Log out'}
         </Button>
       </div>
+
+      <BottomNavigation onTabChange={(tab) => {
+        if (tab === 'map') navigate('/');
+      }} />
     </div>
   );
 };

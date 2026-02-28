@@ -1701,7 +1701,7 @@ export default function LiveSharedMap() {
   }
   
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
+    <div className="h-screen overflow-hidden flex flex-col bg-gray-900">
       {/* Session Ended Banner */}
       {isSessionEnded && (
         <div className="bg-amber-600 text-white px-4 py-2 text-center text-sm flex items-center justify-center gap-2">
