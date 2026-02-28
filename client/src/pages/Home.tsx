@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import MapView from '@/components/MapView';
 import BottomNavigation from '@/components/BottomNavigation';
@@ -8,7 +8,7 @@ import LayerManagerModal from '@/components/modals/LayerManagerModal';
 import RoutesModal from '@/components/modals/RoutesModal';
 import { FriendsModal } from '@/components/modals/FriendsModal';
 import { FriendProfileModal } from '@/components/modals/FriendProfileModal';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { Route, DroneImage } from '@shared/schema';
 
 const Home: React.FC = () => {
@@ -35,6 +35,29 @@ const Home: React.FC = () => {
   
   // Activated drone image (for flying to the correct location)
   const [activatedDroneImage, setActivatedDroneImage] = useState<DroneImage | null>(null);
+
+  const searchString = useSearch();
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const viewRouteId = params.get('viewRoute');
+
+    if (viewRouteId) {
+      window.history.replaceState({}, '', '/');
+
+      fetch(`/api/routes/${viewRouteId}`, { credentials: 'include' })
+        .then(res => {
+          if (!res.ok) throw new Error('Route not found');
+          return res.json();
+        })
+        .then((route: Route) => {
+          setSelectedRoute(route);
+        })
+        .catch(err => {
+          console.error('Failed to load route:', err);
+        });
+    }
+  }, [searchString]);
   
   // Handle tab changes from bottom navigation
   const handleTabChange = (tab: string) => {

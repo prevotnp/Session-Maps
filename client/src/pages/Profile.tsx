@@ -19,8 +19,8 @@ import {
   Route as RouteIcon, 
   Activity, 
   Globe, 
-  Lock, 
-  Navigation
+  Lock,
+  Eye
 } from 'lucide-react';
 import type { Route, Activity as ActivityType } from '@shared/schema';
 
@@ -207,11 +207,12 @@ const Profile: React.FC = () => {
                         </div>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-gray-400 hover:text-white"
-                          onClick={() => navigate('/')}
+                          size="sm"
+                          className="h-8 shrink-0 text-blue-400 hover:text-blue-300 text-xs"
+                          onClick={() => navigate(`/?viewRoute=${route.id}`)}
                         >
-                          <Navigation className="h-4 w-4" />
+                          <Eye className="h-3 w-3 mr-1" />
+                          View
                         </Button>
                       </div>
                     ))}
