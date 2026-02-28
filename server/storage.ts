@@ -26,7 +26,8 @@ import {
   DeviceToken, InsertDeviceToken,
   PasswordResetToken,
   Activity, InsertActivity,
-  Cesium3dTileset, InsertCesium3dTileset
+  Cesium3dTileset, InsertCesium3dTileset,
+  DirectMessage, InsertDirectMessage
 } from "@shared/schema";
 
 // Modify the interface with any CRUD methods
@@ -237,6 +238,16 @@ export interface IStorage {
   updateActivity(id: number, updates: Partial<InsertActivity>): Promise<Activity | undefined>;
   deleteActivity(id: number): Promise<boolean>;
   getPublicActivities(): Promise<Activity[]>;
+
+  sendDirectMessage(data: InsertDirectMessage): Promise<DirectMessage>;
+  getConversationMessages(userAId: number, userBId: number, limit?: number, before?: number): Promise<DirectMessage[]>;
+  markMessagesAsRead(readerId: number, senderId: number): Promise<void>;
+  getConversationList(userId: number): Promise<Array<{
+    otherUser: { id: number; username: string; fullName: string | null };
+    lastMessage: { id: number; body: string; senderId: number; createdAt: Date | null };
+    unreadCount: number;
+  }>>;
+  getUnreadMessageCount(userId: number): Promise<number>;
 }
 
 export class MemStorage implements IStorage {

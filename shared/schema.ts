@@ -393,6 +393,15 @@ export const activities = pgTable("activities", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const directMessages = pgTable("direct_messages", {
+  id: serial("id").primaryKey(),
+  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  receiverId: integer("receiver_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: text("body").notNull(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   id: true,
   username: true,
@@ -697,6 +706,12 @@ export const deviceTokens = pgTable("device_tokens", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const insertDirectMessageSchema = createInsertSchema(directMessages).pick({
+  senderId: true,
+  receiverId: true,
+  body: true,
+});
+
 export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).pick({
   userId: true,
   token: true,
@@ -788,6 +803,8 @@ export type DeviceToken = typeof deviceTokens.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 export type Activity = typeof activities.$inferSelect;
+export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;
+export type DirectMessage = typeof directMessages.$inferSelect;
 export type LoginData = z.infer<typeof loginSchema>;
 export type RegisterData = z.infer<typeof registerSchema>;
 export type LocationShareData = z.infer<typeof locationShareSchema>;

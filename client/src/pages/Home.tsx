@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import MapView from '@/components/MapView';
 import BottomNavigation from '@/components/BottomNavigation';
-import OfflineModal from '@/components/modals/OfflineModal';
+import { MessagesModal } from '@/components/modals/MessagesModal';
 import DroneImageryModal from '@/components/modals/DroneImageryModal';
 import LayerManagerModal from '@/components/modals/LayerManagerModal';
 import RoutesModal from '@/components/modals/RoutesModal';
@@ -16,7 +16,7 @@ const Home: React.FC = () => {
   const [location, setLocation] = useLocation();
   
   // Modal states
-  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
   const [isDroneModalOpen, setIsDroneModalOpen] = useState(false);
   const [isLayerModalOpen, setIsLayerModalOpen] = useState(false);
   const [isRoutesModalOpen, setIsRoutesModalOpen] = useState(false);
@@ -45,8 +45,8 @@ const Home: React.FC = () => {
       case 'layers':
         setIsLayerModalOpen(true);
         break;
-      case 'offline':
-        setIsOfflineModalOpen(true);
+      case 'messages':
+        setIsMessagesModalOpen(true);
         break;
       case 'routes':
         setIsRoutesModalOpen(true);
@@ -72,7 +72,7 @@ const Home: React.FC = () => {
     <div className="relative h-full w-full overflow-hidden flex flex-col bg-black" style={{ paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
       {/* Main map view */}
       <MapView 
-        onOpenOfflineModal={() => setIsOfflineModalOpen(true)}
+        onOpenOfflineModal={() => {}}
         onOpenDroneModal={() => setIsDroneModalOpen(true)}
         selectedRoute={selectedRoute}
         onRouteDisplayed={() => setSelectedRoute(null)}
@@ -89,10 +89,10 @@ const Home: React.FC = () => {
       <BottomNavigation onTabChange={handleTabChange} />
       
       {/* Modals */}
-      <OfflineModal 
-        isOpen={isOfflineModalOpen} 
-        onClose={() => setIsOfflineModalOpen(false)}
-        bounds={null}
+      <MessagesModal 
+        isOpen={isMessagesModalOpen} 
+        onClose={() => setIsMessagesModalOpen(false)}
+        onViewProfile={handleViewProfile}
       />
       
       <DroneImageryModal 

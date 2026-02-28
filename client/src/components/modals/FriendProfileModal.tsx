@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { 
-  User, MapPin, Lock, Globe, 
+  User, MapPin, Lock, Globe, UserPlus, UserMinus, Clock,
   Route as RouteIcon, Activity, 
   ChevronDown, ChevronUp, Navigation 
 } from "lucide-react";
@@ -33,7 +36,16 @@ interface ProfileData {
   activities: ActivityType[];
 }
 
+interface FriendRequest {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  status: string;
+}
+
 export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: FriendProfileModalProps) {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [routesExpanded, setRoutesExpanded] = useState(true);
   const [activitiesExpanded, setActivitiesExpanded] = useState(false);
 
@@ -45,6 +57,42 @@ export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: F
       return response.json();
     },
     enabled: isOpen && !!username,
+  });
+
+  const { data: sentRequests = [] } = useQuery<FriendRequest[]>({
+    queryKey: ["/api/friend-requests/sent"],
+    enabled: isOpen && !!profile && !profile.isFriend && !profile.isOwner,
+  });
+
+  const hasPendingRequest = profile?.user?.id
+    ? sentRequests.some(r => r.receiverId === profile.user.id && r.status === 'pending')
+    : false;
+
+  const sendFriendRequest = useMutation({
+    mutationFn: async (receiverId: number) => {
+      return apiRequest("POST", "/api/friend-requests", { receiverId });
+    },
+    onSuccess: () => {
+      toast({ title: "Friend request sent" });
+      queryClient.invalidateQueries({ queryKey: ["/api/friend-requests/sent"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to send request", variant: "destructive" });
+    },
+  });
+
+  const removeFriend = useMutation({
+    mutationFn: async (friendId: number) => {
+      return apiRequest("DELETE", `/api/friends/${friendId}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Friend removed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/profiles", username] });
+      queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove friend", variant: "destructive" });
+    },
   });
 
   const handleViewRoute = (route: Route) => {
@@ -103,6 +151,23 @@ export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: F
             </Avatar>
             <h2 className="text-lg font-bold text-white">{profile.user.fullName || profile.user.username}</h2>
             <p className="text-gray-400 mb-6">@{profile.user.username}</p>
+
+            {hasPendingRequest ? (
+              <Button variant="outline" className="mb-4" disabled>
+                <Clock className="h-4 w-4 mr-2" />
+                Friend request sent
+              </Button>
+            ) : (
+              <Button
+                className="mb-4"
+                onClick={() => sendFriendRequest.mutate(profile.user.id)}
+                disabled={sendFriendRequest.isPending}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                {sendFriendRequest.isPending ? 'Sending...' : 'Add Friend'}
+              </Button>
+            )}
+
             <div className="flex items-center gap-2 text-gray-500 bg-gray-800 rounded-lg px-4 py-3">
               <Lock className="h-5 w-5" />
               <span className="text-sm">Add as a friend to see their routes and activities</span>
@@ -119,6 +184,18 @@ export function FriendProfileModal({ isOpen, onClose, username, onViewRoute }: F
               <p className="text-gray-400">@{profile.user.username}</p>
               {profile.user.email && (
                 <p className="text-gray-500 text-sm mt-1">{profile.user.email}</p>
+              )}
+              {profile.isFriend && !profile.isOwner && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 text-red-400 border-red-400/50 hover:bg-red-400/10"
+                  onClick={() => removeFriend.mutate(profile.user.id)}
+                  disabled={removeFriend.isPending}
+                >
+                  <UserMinus className="h-4 w-4 mr-1" />
+                  {removeFriend.isPending ? 'Removing...' : 'Unfriend'}
+                </Button>
               )}
             </div>
 

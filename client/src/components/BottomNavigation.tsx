@@ -1,5 +1,5 @@
 import React from 'react';
-import { Map, Download, Route, User, Users, Upload, Compass } from 'lucide-react';
+import { Map, MessageCircle, Route, User, Users, Upload, Compass } from 'lucide-react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -19,11 +19,17 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ onTabChange }) => {
   const { user } = useAuth();
   const isAdmin = (user as any)?.isAdmin;
   
-  // Fetch pending friend requests count
   const { data: pendingRequests = [] } = useQuery<FriendRequest[]>({
     queryKey: ["/api/friend-requests/pending"],
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/messages/unread-count"],
+    refetchInterval: 15000,
+  });
+
+  const unreadCount = unreadData?.count || 0;
 
   return (
     <div 
@@ -45,11 +51,16 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ onTabChange }) => {
         </Link>
         
         <button 
-          className="py-3 px-2 sm:px-4 flex flex-col items-center text-white/80 hover:text-white min-w-[48px] min-h-[48px] active:scale-95 transition-transform"
-          onClick={() => onTabChange('offline')}
+          className="py-3 px-2 sm:px-4 flex flex-col items-center text-white/80 hover:text-white relative min-w-[48px] min-h-[48px] active:scale-95 transition-transform"
+          onClick={() => onTabChange('messages')}
         >
-          <Download className="h-6 w-6 sm:h-7 sm:w-7" />
-          <span className="text-[10px] sm:text-xs mt-1 font-medium">Offline</span>
+          <MessageCircle className="h-6 w-6 sm:h-7 sm:w-7" />
+          <span className="text-[10px] sm:text-xs mt-1 font-medium">Messages</span>
+          {unreadCount > 0 && (
+            <div className="absolute top-1 right-0 bg-red-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </div>
+          )}
         </button>
         
         <Link href="/explore">

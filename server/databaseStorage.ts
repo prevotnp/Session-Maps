@@ -30,6 +30,7 @@ import {
   deviceTokens,
   passwordResetTokens,
   activities,
+  directMessages,
   type User,
   type InsertUser,
   type DroneImage,
@@ -85,6 +86,8 @@ import {
   type PasswordResetToken,
   type Activity,
   type InsertActivity,
+  type DirectMessage,
+  type InsertDirectMessage,
   type Cesium3dTileset,
   type InsertCesium3dTileset,
 } from "@shared/schema";
@@ -1617,5 +1620,118 @@ export class DatabaseStorage implements IStorage {
       .from(activities)
       .where(eq(activities.isPublic, true))
       .orderBy(desc(activities.startTime));
+  }
+
+  async sendDirectMessage(data: InsertDirectMessage): Promise<DirectMessage> {
+    const [message] = await db.insert(directMessages).values(data).returning();
+    return message;
+  }
+
+  async getConversationMessages(userAId: number, userBId: number, limit = 50, before?: number): Promise<DirectMessage[]> {
+    const baseWhere = or(
+      and(eq(directMessages.senderId, userAId), eq(directMessages.receiverId, userBId)),
+      and(eq(directMessages.senderId, userBId), eq(directMessages.receiverId, userAId))
+    );
+
+    if (before) {
+      return db
+        .select()
+        .from(directMessages)
+        .where(and(baseWhere, sql`${directMessages.id} < ${before}`))
+        .orderBy(sql`${directMessages.createdAt} DESC`)
+        .limit(limit);
+    }
+
+    return db
+      .select()
+      .from(directMessages)
+      .where(baseWhere)
+      .orderBy(sql`${directMessages.createdAt} DESC`)
+      .limit(limit);
+  }
+
+  async markMessagesAsRead(readerId: number, senderId: number): Promise<void> {
+    await db
+      .update(directMessages)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(directMessages.senderId, senderId),
+          eq(directMessages.receiverId, readerId),
+          sql`${directMessages.readAt} IS NULL`
+        )
+      );
+  }
+
+  async getConversationList(userId: number): Promise<Array<{
+    otherUser: { id: number; username: string; fullName: string | null };
+    lastMessage: { id: number; body: string; senderId: number; createdAt: Date | null };
+    unreadCount: number;
+  }>> {
+    const allMessages = await db
+      .select()
+      .from(directMessages)
+      .where(
+        or(
+          eq(directMessages.senderId, userId),
+          eq(directMessages.receiverId, userId)
+        )
+      )
+      .orderBy(sql`${directMessages.createdAt} DESC`);
+
+    const conversationMap = new Map<number, { lastMessage: DirectMessage; unreadCount: number }>();
+
+    for (const msg of allMessages) {
+      const otherId = msg.senderId === userId ? msg.receiverId : msg.senderId;
+      if (!conversationMap.has(otherId)) {
+        const unreadCount = allMessages.filter(
+          m => m.senderId === otherId && m.receiverId === userId && !m.readAt
+        ).length;
+        conversationMap.set(otherId, { lastMessage: msg, unreadCount });
+      }
+    }
+
+    const results: Array<{
+      otherUser: { id: number; username: string; fullName: string | null };
+      lastMessage: { id: number; body: string; senderId: number; createdAt: Date | null };
+      unreadCount: number;
+    }> = [];
+
+    for (const [otherId, data] of conversationMap) {
+      const otherUser = await this.getUser(otherId);
+      if (otherUser) {
+        results.push({
+          otherUser: { id: otherUser.id, username: otherUser.username, fullName: otherUser.fullName },
+          lastMessage: {
+            id: data.lastMessage.id,
+            body: data.lastMessage.body,
+            senderId: data.lastMessage.senderId,
+            createdAt: data.lastMessage.createdAt,
+          },
+          unreadCount: data.unreadCount,
+        });
+      }
+    }
+
+    results.sort((a, b) => {
+      const aTime = a.lastMessage.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+      const bTime = b.lastMessage.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return results;
+  }
+
+  async getUnreadMessageCount(userId: number): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(directMessages)
+      .where(
+        and(
+          eq(directMessages.receiverId, userId),
+          sql`${directMessages.readAt} IS NULL`
+        )
+      );
+    return result[0]?.count || 0;
   }
 }
