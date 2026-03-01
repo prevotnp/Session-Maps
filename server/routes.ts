@@ -1,3 +1,4 @@
+import { getUncachableResendClient } from "./resend";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage as dbStorage } from "./storage";
@@ -321,16 +322,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : 'http://localhost:5000');
       const resetUrl = `${baseUrl}/reset-password?token=${token}`;
       
-      // Log the reset link (since we don't have email integration yet)
-      console.log(`Password reset requested for ${email}`);
-      console.log(`Reset URL: ${resetUrl}`);
-      
-      // In production, you would send an email here
-      // For now, we'll return the reset link in the response (for testing only)
+      try {
+        const { client: resend, fromEmail } = await getUncachableResendClient();
+        await resend.emails.send({
+          from: fromEmail || 'Session Maps <noreply@sessionmaps.com>',
+          to: [email],
+          subject: 'Reset Your Session Maps Password',
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+              <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin: 0;">Session Maps</h1>
+              </div>
+              <h2 style="font-size: 20px; font-weight: 600; color: #1e293b; margin-bottom: 16px;">Reset Your Password</h2>
+              <p style="font-size: 15px; color: #475569; line-height: 1.6; margin-bottom: 24px;">
+                We received a request to reset the password for your Session Maps account. Click the button below to create a new password.
+              </p>
+              <div style="text-align: center; margin-bottom: 24px;">
+                <a href="${resetUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 32px; border-radius: 8px;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px;">
+                This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email — your password will remain unchanged.
+              </p>
+              <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                If the button doesn't work, copy and paste this link into your browser:<br/>
+                <a href="${resetUrl}" style="color: #60a5fa; word-break: break-all;">${resetUrl}</a>
+              </p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+              <p style="font-size: 11px; color: #cbd5e1; text-align: center;">
+                &copy; ${new Date().getFullYear()} Session Maps &middot; sessionmaps.com
+              </p>
+            </div>
+          `,
+        });
+      } catch (emailError) {
+        console.error('Failed to send password reset email:', emailError);
+      }
+
       return res.status(200).json({ 
-        message: "If an account with that email exists, you will receive a password reset link.",
-        // Remove this in production - only for testing
-        resetUrl: process.env.NODE_ENV !== 'production' ? resetUrl : undefined
+        message: "If an account with that email exists, you will receive a password reset link."
       });
     } catch (error) {
       if (error instanceof ZodError) {

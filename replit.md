@@ -62,3 +62,4 @@ The application features a unified bottom toolbar for map controls, including 3D
 - **Mapbox API**: Map tiles, geocoding, directions.
 - **Teton County GIS**: Regional high-resolution imagery and parcel data.
 - **WebSocket Protocol**: Real-time communication.
+- **Resend**: Transactional email delivery for password reset emails. Connected via Replit integration (connector). Client helper in `server/resend.ts`, used in forgot-password endpoint in `server/routes.ts`.
