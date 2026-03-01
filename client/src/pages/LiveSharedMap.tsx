@@ -222,6 +222,7 @@ export default function LiveSharedMap() {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
   const intentionalCloseRef = useRef(false);
+  const updateMemberMarkerRef = useRef<((userId: number, lat: number, lng: number) => void) | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const drawRouteMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const sharedRouteLayersRef = useRef<string[]>([]);
@@ -1165,7 +1166,9 @@ export default function LiveSharedMap() {
         
         switch (data.type) {
           case 'member:locationUpdate':
-            updateMemberMarker(data.data.userId, data.data.latitude, data.data.longitude);
+            if (updateMemberMarkerRef.current) {
+              updateMemberMarkerRef.current(data.data.userId, data.data.latitude, data.data.longitude);
+            }
             break;
           case 'member:joined':
           case 'member:left':
@@ -1267,8 +1270,8 @@ export default function LiveSharedMap() {
         },
         {
           enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
+          timeout: 15000,
+          maximumAge: 3000
         }
       );
     }
@@ -1409,6 +1412,10 @@ export default function LiveSharedMap() {
   }, [user, session?.members]);
 
   useEffect(() => {
+    updateMemberMarkerRef.current = updateMemberMarker;
+  }, [updateMemberMarker]);
+
+  useEffect(() => {
     const SIGNAL_LOST_THRESHOLD = 2 * 60 * 1000;
     
     const checkSignalLost = () => {
@@ -1440,7 +1447,10 @@ export default function LiveSharedMap() {
         } else {
           if (dot) {
             dot.style.opacity = '1';
+            dot.style.animation = 'member-pulse 2s ease-in-out infinite';
           }
+          if (lostOverlay) lostOverlay.style.display = 'none';
+          if (lostLabel) lostLabel.style.display = 'none';
         }
       });
     };
@@ -1476,7 +1486,9 @@ export default function LiveSharedMap() {
           const data = JSON.parse(event.data);
           switch (data.type) {
             case 'member:locationUpdate':
-              updateMemberMarker(data.data.userId, data.data.latitude, data.data.longitude);
+              if (updateMemberMarkerRef.current) {
+                updateMemberMarkerRef.current(data.data.userId, data.data.latitude, data.data.longitude);
+              }
               break;
             case 'member:joined':
             case 'member:left':
