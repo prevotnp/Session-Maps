@@ -121,6 +121,16 @@ export default function RouteBuilderModal({
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiWaypointsLoaded, setAiWaypointsLoaded] = useState(false);
   const aiMarkersDisplayedRef = useRef(false);
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [aiRouteOptions, setAiRouteOptions] = useState<Array<{
+    label: string;
+    source: 'trail_data' | 'community';
+    description: string;
+    waypoints: Array<{ name: string; lat: number; lng: number; description?: string }>;
+    communityRouteId?: number;
+    communityAuthor?: string;
+  }> | null>(null);
+  const [aiConversationHistory, setAiConversationHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [originalWaypointPositions, setOriginalWaypointPositions] = useState<string>('');
 
   // Initialize notes and photos when editing
@@ -650,70 +660,61 @@ export default function RouteBuilderModal({
 
     setIsGeneratingAiRoute(true);
     setAiError(null);
+    setAiResponse(null);
+    setAiRouteOptions(null);
 
     try {
       const mapCenter = map ? map.getCenter() : null;
 
-      const response = await fetch('/api/ai/generate-route', {
+      let activityType = 'hiking';
+      if (routeState.routingMode === 'road') activityType = 'general';
+
+      const response = await fetch('/api/ai/route-assist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: aiPrompt.trim(),
-          routingMode: routeState.routingMode,
-          centerLat: mapCenter?.lat || null,
-          centerLng: mapCenter?.lng || null
+          message: aiPrompt.trim(),
+          activityType,
+          mapCenter: {
+            lat: mapCenter?.lat || 43.48,
+            lng: mapCenter?.lng || -110.76,
+          },
+          mapZoom: map?.getZoom() || 12,
+          conversationHistory: aiConversationHistory,
+          existingRoute: routeState.waypointCoordinates.length >= 2 ? {
+            name: routeState.name,
+            waypoints: routeState.waypointCoordinates.map((wp: any) => ({
+              name: wp.name,
+              lat: wp.lngLat[1],
+              lng: wp.lngLat[0],
+              elevation: wp.elevation || undefined,
+            })),
+            totalDistance: routeState.totalDistance,
+            elevationGain: routeState.elevationGain,
+            elevationLoss: routeState.elevationLoss,
+            routingMode: routeState.routingMode,
+          } : undefined,
         }),
-        credentials: 'include'
+        credentials: 'include',
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setAiError(data.error || "Failed to generate route");
+        setAiError(data.message || data.error || "Failed to get AI response");
         return;
       }
 
-      if (!data.waypoints || data.waypoints.length < 2) {
-        setAiError("AI didn't return enough waypoints. Try being more specific about the location.");
-        return;
-      }
+      setAiResponse(data.message);
+      setAiRouteOptions(data.routeOptions || null);
 
-      const waypointCoordinates = data.waypoints.map((wp: any, index: number) => ({
-        name: wp.name || `Waypoint ${index + 1}`,
-        lngLat: [wp.lng, wp.lat] as [number, number],
-        elevation: null
-      }));
-
-      if (clearEditableRouteWaypoints) {
-        clearEditableRouteWaypoints();
-      }
-
-      setRouteState(prev => ({
+      setAiConversationHistory(prev => [
         ...prev,
-        name: prev.name.trim() || data.name || "AI Generated Route",
-        description: prev.description.trim() || data.description || "",
-        waypointCoordinates,
-        pathCoordinates: waypointCoordinates.map((wp: any) => wp.lngLat),
-        totalDistance: 0,
-        elevationGain: 0,
-        elevationLoss: 0,
-        estimatedTime: 0
-      }));
+        { role: 'user' as const, content: aiPrompt.trim() },
+        { role: 'assistant' as const, content: data.message },
+      ]);
 
-      setShowAiPrompt(false);
       setAiPrompt("");
-
-      aiMarkersDisplayedRef.current = false;
-      setAiWaypointsLoaded(true);
-
-      toast({
-        title: "Route generated!",
-        description: `${waypointCoordinates.length} waypoints placed. ${
-          routeState.routingMode === 'trail' ? 'Calculating trail route...' :
-          routeState.routingMode === 'road' ? 'Calculating road route...' :
-          'Calculating route...'
-        }`,
-      });
 
     } catch (error: any) {
       console.error('AI route generation error:', error);
@@ -721,7 +722,58 @@ export default function RouteBuilderModal({
     } finally {
       setIsGeneratingAiRoute(false);
     }
-  }, [aiPrompt, routeState.routingMode, routeState.name, routeState.description, clearEditableRouteWaypoints, toast]);
+  }, [aiPrompt, routeState, map, aiConversationHistory]);
+
+  const applyAiRouteOption = useCallback((option: {
+    label: string;
+    description?: string;
+    waypoints: Array<{ name: string; lat: number; lng: number; description?: string }>;
+  }) => {
+    if (!option.waypoints || option.waypoints.length < 2) {
+      setAiError("This route option doesn't have enough waypoints.");
+      return;
+    }
+
+    const waypointCoordinates = option.waypoints.map((wp, index) => ({
+      name: wp.name || `Waypoint ${index + 1}`,
+      lngLat: [wp.lng, wp.lat] as [number, number],
+      elevation: null,
+    }));
+
+    if (clearEditableRouteWaypoints) {
+      clearEditableRouteWaypoints();
+    }
+
+    setRouteState(prev => ({
+      ...prev,
+      name: prev.name.trim() || option.label || "AI Generated Route",
+      description: prev.description.trim() || option.description || "",
+      waypointCoordinates,
+      pathCoordinates: waypointCoordinates.map((wp: any) => wp.lngLat),
+      totalDistance: 0,
+      elevationGain: 0,
+      elevationLoss: 0,
+      estimatedTime: 0,
+    }));
+
+    setShowAiPrompt(false);
+    setAiPrompt("");
+    setAiResponse(null);
+    setAiRouteOptions(null);
+    setAiConversationHistory([]);
+
+    aiMarkersDisplayedRef.current = false;
+    setAiWaypointsLoaded(true);
+
+    toast({
+      title: "Route applied!",
+      description: `${waypointCoordinates.length} waypoints placed from "${option.label}". ${
+        routeState.routingMode === 'trail' ? 'Calculating trail route...' :
+        routeState.routingMode === 'road' ? 'Calculating road route...' :
+        'Calculating route...'
+      }`,
+    });
+  }, [clearEditableRouteWaypoints, routeState.routingMode, toast]);
   
   // Helper function to calculate distance between two points (in meters)
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -1218,27 +1270,102 @@ export default function RouteBuilderModal({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                        <span className="text-xs font-medium text-purple-300">Describe your route</span>
+                        <span className="text-xs font-medium text-purple-300">AI Route Assistant</span>
                       </div>
                       <button
-                        onClick={() => { setShowAiPrompt(false); setAiError(null); setAiPrompt(""); }}
+                        onClick={() => {
+                          setShowAiPrompt(false);
+                          setAiError(null);
+                          setAiPrompt("");
+                          setAiResponse(null);
+                          setAiRouteOptions(null);
+                          setAiConversationHistory([]);
+                        }}
                         className="text-muted-foreground hover:text-foreground"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
+                    {aiResponse && (
+                      <div className="space-y-2">
+                        <div className="bg-background/80 rounded-md p-2.5 text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                          {aiResponse}
+                        </div>
+
+                        {aiRouteOptions && aiRouteOptions.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                              {aiRouteOptions.length} route option{aiRouteOptions.length !== 1 ? 's' : ''} found
+                            </p>
+                            {aiRouteOptions.map((option, i) => {
+                              const isCommunity = option.source === 'community';
+                              return (
+                                <div
+                                  key={i}
+                                  className={`rounded-md border p-2.5 ${
+                                    isCommunity
+                                      ? 'border-purple-400/30 bg-purple-400/5'
+                                      : 'border-blue-400/30 bg-blue-400/5'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-xs font-semibold ${
+                                        isCommunity ? 'text-purple-300' : 'text-blue-300'
+                                      }`}>
+                                        {isCommunity ? '\uD83D\uDC65 ' : '\uD83D\uDDFA\uFE0F '}{option.label}
+                                      </p>
+                                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
+                                        {option.description}
+                                      </p>
+                                      {isCommunity && option.communityAuthor && (
+                                        <p className="text-[10px] text-purple-400/60 mt-0.5">
+                                          Route by @{option.communityAuthor} on Session Maps
+                                        </p>
+                                      )}
+                                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                                        {option.waypoints.length} waypoints: {option.waypoints.map(wp => wp.name).join(' \u2192 ')}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    className={`w-full mt-2 h-7 text-xs gap-1.5 ${
+                                      isCommunity
+                                        ? 'bg-purple-600 hover:bg-purple-700'
+                                        : 'bg-blue-600 hover:bg-blue-700'
+                                    }`}
+                                    onClick={() => applyAiRouteOption(option)}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    Use This Route
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div className="border-t border-white/10 pt-2">
+                          <p className="text-[10px] text-muted-foreground mb-1.5">Ask a follow-up or try a different request:</p>
+                        </div>
+                      </div>
+                    )}
+
                     <Textarea
                       value={aiPrompt}
                       onChange={(e) => setAiPrompt(e.target.value)}
                       placeholder={
-                        routeState.routingMode === 'trail'
-                          ? "e.g., Build me a hiking loop around Jenny Lake in Grand Teton National Park, starting from the South Jenny Lake trailhead"
+                        aiResponse
+                          ? "Ask a follow-up: 'Make it shorter' or 'What about a loop instead?'"
+                          : routeState.routingMode === 'trail'
+                          ? "e.g., Build me a hiking loop around Jenny Lake starting from the South Jenny Lake trailhead"
                           : routeState.routingMode === 'road'
                           ? "e.g., Create a scenic driving route from Jackson to Yellowstone through the Teton Pass"
                           : "e.g., Plan a route from the town square in Jackson to Snow King summit"
                       }
-                      rows={3}
+                      rows={aiResponse ? 2 : 3}
                       className="text-sm resize-none bg-background"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1250,10 +1377,14 @@ export default function RouteBuilderModal({
                     />
 
                     <div className="text-[10px] text-muted-foreground">
-                      {routeState.routingMode === 'trail' && "Trail mode: AI will place waypoints near trail junctions. The trail router will snap to actual trails."}
-                      {routeState.routingMode === 'road' && "Road mode: AI will place waypoints at key intersections. Mapbox will route on real roads."}
-                      {routeState.routingMode === 'direct' && "Direct mode: AI will place waypoints along the route. Lines will be straight between points."}
-                      {routeState.routingMode === 'draw' && "Draw mode: AI will place waypoints as a starting draft. You can reshape the path by dragging."}
+                      {!aiResponse && (
+                        <>
+                          {routeState.routingMode === 'trail' && "Trail mode: AI searches real trails & community routes, then places waypoints at trail junctions."}
+                          {routeState.routingMode === 'road' && "Road mode: AI places waypoints at key intersections. Mapbox routes on real roads."}
+                          {routeState.routingMode === 'direct' && "Direct mode: AI places waypoints along the route. Lines are straight between points."}
+                          {routeState.routingMode === 'draw' && "Draw mode: AI places waypoints as a starting draft. You can reshape by dragging."}
+                        </>
+                      )}
                     </div>
 
                     {aiError && (
@@ -1269,7 +1400,12 @@ export default function RouteBuilderModal({
                       {isGeneratingAiRoute ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Generating waypoints...
+                          Searching trails & community routes...
+                        </>
+                      ) : aiResponse ? (
+                        <>
+                          <Wand2 className="w-4 h-4" />
+                          Send Follow-up
                         </>
                       ) : (
                         <>
