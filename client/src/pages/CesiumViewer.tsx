@@ -40,6 +40,9 @@ interface Cesium3dTileset {
   userId: number;
 }
 
+const MIN_CAMERA_HEIGHT = 2;
+const MAX_CAMERA_HEIGHT = 5000;
+
 let Cesium: any = null;
 
 async function loadCesium(): Promise<any> {
@@ -178,7 +181,23 @@ export default function CesiumViewer() {
         if (viewer.scene.sun) viewer.scene.sun.show = false;
         if (viewer.scene.moon) viewer.scene.moon.show = false;
         if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
-        viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
+        viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
+
+        const controller = viewer.scene.screenSpaceCameraController;
+        controller.minimumZoomDistance = 2.0;
+        controller.maximumZoomDistance = 5000.0;
+
+        controller.zoomEventTypes = [
+          Cesium.CameraEventType.RIGHT_DRAG,
+          Cesium.CameraEventType.WHEEL,
+          Cesium.CameraEventType.PINCH,
+        ];
+        controller.tiltEventTypes = [
+          Cesium.CameraEventType.MIDDLE_DRAG,
+          Cesium.CameraEventType.LEFT_DRAG,
+        ];
+        controller.rotateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+        controller.lookEventTypes = [];
 
         viewerRef.current = viewer;
 
@@ -202,6 +221,68 @@ export default function CesiumViewer() {
         });
 
         await viewer.zoomTo(loadedTileset);
+
+        viewer.scene.preRender.addEventListener(() => {
+          const camera = viewer.camera;
+
+          const minPitch = -Math.PI / 2;
+          const maxPitch = Math.PI * 0.028;
+
+          if (camera.pitch > maxPitch) {
+            camera.setView({
+              orientation: { heading: camera.heading, pitch: maxPitch, roll: 0 },
+            });
+          }
+          if (camera.pitch < minPitch) {
+            camera.setView({
+              orientation: { heading: camera.heading, pitch: minPitch, roll: 0 },
+            });
+          }
+          if (Math.abs(camera.roll) > 0.01) {
+            camera.setView({
+              orientation: { heading: camera.heading, pitch: camera.pitch, roll: 0 },
+            });
+          }
+
+          if (tilesetRef.current && tilesetRef.current.boundingSphere) {
+            const boundingSphere = tilesetRef.current.boundingSphere;
+            const tilesetCenter = boundingSphere.center;
+            const maxDistance = boundingSphere.radius * 3;
+
+            const cameraPosition = viewer.camera.positionWC;
+            const distanceFromCenter = Cesium.Cartesian3.distance(cameraPosition, tilesetCenter);
+
+            if (distanceFromCenter > maxDistance) {
+              const direction = Cesium.Cartesian3.subtract(tilesetCenter, cameraPosition, new Cesium.Cartesian3());
+              Cesium.Cartesian3.normalize(direction, direction);
+              const pullBackDistance = distanceFromCenter - maxDistance;
+              const offset = Cesium.Cartesian3.multiplyByScalar(direction, pullBackDistance, new Cesium.Cartesian3());
+              const newPosition = Cesium.Cartesian3.add(cameraPosition, offset, new Cesium.Cartesian3());
+
+              camera.setView({
+                destination: newPosition,
+                orientation: { heading: camera.heading, pitch: camera.pitch, roll: 0 },
+              });
+            }
+
+            const centerCartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
+            const approximateGroundHeight = centerCartographic.height - (boundingSphere.radius * 0.5);
+            const minimumAllowedHeight = approximateGroundHeight + MIN_CAMERA_HEIGHT;
+
+            const cameraCartographic = camera.positionCartographic;
+            if (cameraCartographic.height < minimumAllowedHeight) {
+              const correctedPosition = Cesium.Cartesian3.fromRadians(
+                cameraCartographic.longitude,
+                cameraCartographic.latitude,
+                minimumAllowedHeight
+              );
+              camera.setView({
+                destination: correctedPosition,
+                orientation: { heading: camera.heading, pitch: camera.pitch, roll: 0 },
+              });
+            }
+          }
+        });
 
         viewer.scene.requestRender();
 
@@ -418,19 +499,55 @@ export default function CesiumViewer() {
   }, [gpsPosition]);
 
   const resetView = useCallback(() => {
-    if (!viewerRef.current || !tilesetRef.current) return;
-    viewerRef.current.zoomTo(tilesetRef.current);
+    if (!viewerRef.current || !tilesetRef.current || !Cesium) return;
+    const viewer = viewerRef.current;
+    const boundingSphere = tilesetRef.current.boundingSphere;
+
+    const center = Cesium.Cartographic.fromCartesian(boundingSphere.center);
+    const viewDistance = boundingSphere.radius * 2.5;
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromRadians(
+        center.longitude,
+        center.latitude,
+        center.height + viewDistance
+      ),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(-45),
+        roll: 0,
+      },
+      duration: 1.5,
+    });
   }, []);
 
   const zoomIn = useCallback(() => {
     if (!viewerRef.current) return;
-    viewerRef.current.camera.zoomIn(viewerRef.current.camera.positionCartographic.height * 0.3);
+    const camera = viewerRef.current.camera;
+    const currentHeight = camera.positionCartographic.height;
+    const zoomAmount = currentHeight * 0.3;
+    const newHeight = currentHeight - zoomAmount;
+
+    if (newHeight >= MIN_CAMERA_HEIGHT) {
+      camera.zoomIn(zoomAmount);
+    } else if (currentHeight > MIN_CAMERA_HEIGHT) {
+      camera.zoomIn(currentHeight - MIN_CAMERA_HEIGHT);
+    }
     viewerRef.current.scene.requestRender();
   }, []);
 
   const zoomOut = useCallback(() => {
     if (!viewerRef.current) return;
-    viewerRef.current.camera.zoomOut(viewerRef.current.camera.positionCartographic.height * 0.3);
+    const camera = viewerRef.current.camera;
+    const currentHeight = camera.positionCartographic.height;
+    const zoomAmount = currentHeight * 0.3;
+    const newHeight = currentHeight + zoomAmount;
+
+    if (newHeight <= MAX_CAMERA_HEIGHT) {
+      camera.zoomOut(zoomAmount);
+    } else if (currentHeight < MAX_CAMERA_HEIGHT) {
+      camera.zoomOut(MAX_CAMERA_HEIGHT - currentHeight);
+    }
     viewerRef.current.scene.requestRender();
   }, []);
 
@@ -994,40 +1111,40 @@ export default function CesiumViewer() {
             <Button
               variant="outline"
               size="icon"
-              className="w-[30px] h-[30px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800"
+              className="w-[44px] h-[44px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800 active:scale-95 transition-all"
               onClick={zoomIn}
               title="Zoom in"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-5 h-5" />
             </Button>
             <Button
               variant="outline"
               size="icon"
-              className="w-[30px] h-[30px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800"
+              className="w-[44px] h-[44px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800 active:scale-95 transition-all"
               onClick={zoomOut}
               title="Zoom out"
             >
-              <Minus className="w-3.5 h-3.5" />
+              <Minus className="w-5 h-5" />
             </Button>
           </div>
           <div className="flex gap-1.5 justify-end">
             <Button
               variant="outline"
               size="icon"
-              className="w-[30px] h-[30px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800"
+              className="w-[44px] h-[44px] bg-blue-900/80 border-blue-400/40 text-blue-300 hover:bg-blue-800 hover:text-white active:scale-95 transition-all"
               onClick={resetView}
-              title="Reset view"
+              title="Reset view — return to default overview"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-5 h-5" />
             </Button>
             <Button
               variant="outline"
               size="icon"
-              className="w-[30px] h-[30px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800"
+              className="w-[44px] h-[44px] bg-gray-900/80 border-white/20 text-white hover:bg-gray-800 active:scale-95 transition-all"
               onClick={lookNorth}
               title="Look north"
             >
-              <Compass className="w-3.5 h-3.5" />
+              <Compass className="w-5 h-5" />
             </Button>
           </div>
         </div>
