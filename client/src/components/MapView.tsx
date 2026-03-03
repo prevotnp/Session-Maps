@@ -13,7 +13,7 @@ import { WaypointEditModal } from './modals/WaypointEditModal';
 import DroneAdjustmentControls from './DroneAdjustmentControls';
 import { RouteSummaryPanel } from './RouteSummaryPanel';
 import LiveMapSessionModal from './modals/LiveMapSessionModal';
-import AIRouteAssistPanel from './AIRouteAssistPanel';
+
 import { useMapbox } from '@/hooks/useMapbox';
 import { useOutdoorPOIs } from '@/hooks/useOutdoorPOIs';
 import { useLocation } from '@/hooks/useLocation';
@@ -66,7 +66,7 @@ const MapView: React.FC<MapViewProps> = ({
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [showLocationSharingModal, setShowLocationSharingModal] = useState(false);
   const [showRouteBuilderModal, setShowRouteBuilderModal] = useState(false);
-  const [isAIAssistOpen, setIsAIAssistOpen] = useState(false);
+
   const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showLiveMapModal, setShowLiveMapModal] = useState(false);
   const [selectedOfflineBounds, setSelectedOfflineBounds] = useState<{
@@ -2217,28 +2217,8 @@ const MapView: React.FC<MapViewProps> = ({
         onToggleOutdoorPOIs={() => setShowOutdoorPOIs(!showOutdoorPOIs)}
         esriImageryEnabled={esriImageryEnabled}
         onToggleEsriImagery={toggleEsriImagery}
-        onOpenAIAssist={() => setIsAIAssistOpen(!isAIAssistOpen)}
-        isAIAssistOpen={isAIAssistOpen}
       />
 
-      {isAIAssistOpen && (
-        <div className="absolute left-4 top-20 z-50">
-          <AIRouteAssistPanel
-            isOpen={isAIAssistOpen}
-            onClose={() => setIsAIAssistOpen(false)}
-            mapCenter={map ? { lat: map.getCenter().lat, lng: map.getCenter().lng } : null}
-            mapZoom={map ? map.getZoom() : 13}
-            onAddWaypoints={(waypoints, routeName) => {
-              if (map && waypoints.length > 0) {
-                const bounds = new mapboxgl.LngLatBounds();
-                waypoints.forEach(wp => bounds.extend([wp.lng, wp.lat]));
-                map.fitBounds(bounds, { padding: 60 });
-              }
-              setIsAIAssistOpen(false);
-            }}
-          />
-        </div>
-      )}
       
       {/* Location tracking is now handled by Mapbox directly with a blue pulsing dot */}
 
