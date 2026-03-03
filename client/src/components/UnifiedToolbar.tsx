@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Layers, X } from 'lucide-react';
+import { Mountain, ChevronDown, ChevronUp, Ruler, Route as RouteIcon, Satellite, Eye, Circle, Radio, Layers, X, Sparkles } from 'lucide-react';
 import { PiBirdFill } from 'react-icons/pi';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -29,6 +29,8 @@ interface UnifiedToolbarProps {
   isRecordingActive?: boolean;
   showOutdoorPOIs?: boolean;
   onToggleOutdoorPOIs?: () => void;
+  onOpenAIAssist?: () => void;
+  isAIAssistOpen?: boolean;
 }
 
 const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({ 
@@ -47,6 +49,8 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   isRecordingActive = false,
   showOutdoorPOIs = false,
   onToggleOutdoorPOIs,
+  onOpenAIAssist,
+  isAIAssistOpen = false,
 }) => {
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
   const [layersDropdownOpen, setLayersDropdownOpen] = useState(false);
@@ -377,6 +381,21 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                       </span>
                     </button>
                     
+                    <button 
+                      className={cn(
+                        "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 hover:ring-2 hover:ring-yellow-400/50",
+                        isAIAssistOpen && "ring-2 ring-yellow-400"
+                      )}
+                      onClick={onOpenAIAssist}
+                      data-testid="button-ai-assist"
+                    >
+                      <Sparkles className={`h-4 w-4 sm:h-5 sm:w-5 ${isAIAssistOpen ? 'text-yellow-400' : 'text-yellow-400/70'}`} />
+                      <span className="text-[9px] sm:text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                        <span>AI</span>
+                        <span>Assist</span>
+                      </span>
+                    </button>
+
                     <button 
                       className="layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 hover:ring-2 hover:ring-green-500/50"
                       onClick={onOpenRecordActivity}
