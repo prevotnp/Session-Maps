@@ -911,7 +911,15 @@ export function addEsriWorldImagery(map: mapboxgl.Map): void {
     attribution: 'Esri, Maxar, Earthstar Geographics, and the GIS User Community'
   });
 
-  // Add the layer
+  const layers = map.getStyle().layers || [];
+  let firstVectorLayerId: string | undefined;
+  for (const layer of layers) {
+    if (layer.type !== 'background' && layer.type !== 'raster' && layer.type !== 'hillshade') {
+      firstVectorLayerId = layer.id;
+      break;
+    }
+  }
+
   map.addLayer({
     id: 'esri-world-imagery',
     type: 'raster',
@@ -919,7 +927,7 @@ export function addEsriWorldImagery(map: mapboxgl.Map): void {
     paint: {
       'raster-opacity': 1.0
     }
-  });
+  }, firstVectorLayerId);
 }
 
 // Remove Esri World Imagery layer
