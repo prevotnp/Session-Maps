@@ -35,6 +35,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking', 'riding']));
   const [isTerrain3D, setIsTerrain3D] = useState(false);
   const [showOutdoorPOIs, setShowOutdoorPOIs] = useState(false);
+  const [esriImageryEnabled, setEsriImageryEnabled] = useState(true);
   const [isTrailInfoLoading, setIsTrailInfoLoading] = useState(false);
   const [activeDroneImagery, setActiveDroneImagery] = useState<DroneImage | null>(null);
   const [activeDroneImages, setActiveDroneImages] = useState<Map<number, DroneImage>>(new Map());
@@ -1657,6 +1658,18 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         addUserLocationToMap(map, userLocation);
       }
     });
+  };
+
+  const toggleEsriImagery = () => {
+    if (!mapRef.current || !isMapReady) return;
+    const map = mapRef.current;
+    if (esriImageryEnabled) {
+      removeEsriWorldImagery(map);
+      setEsriImageryEnabled(false);
+    } else {
+      addEsriWorldImagery(map);
+      setEsriImageryEnabled(true);
+    }
   };
   
   // Zoom in
@@ -3912,6 +3925,9 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     isTrailInfoLoading,
     // Outdoor POIs
     showOutdoorPOIs,
-    setShowOutdoorPOIs
+    setShowOutdoorPOIs,
+    // ESRI imagery
+    esriImageryEnabled,
+    toggleEsriImagery
   };
 };

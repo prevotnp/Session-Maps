@@ -30,6 +30,8 @@ interface UnifiedToolbarProps {
   showOutdoorPOIs?: boolean;
   isOutdoorPOIsLoading?: boolean;
   onToggleOutdoorPOIs?: () => void;
+  esriImageryEnabled?: boolean;
+  onToggleEsriImagery?: () => void;
   onOpenAIAssist?: () => void;
   isAIAssistOpen?: boolean;
 }
@@ -51,6 +53,8 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   showOutdoorPOIs = false,
   isOutdoorPOIsLoading = false,
   onToggleOutdoorPOIs,
+  esriImageryEnabled = true,
+  onToggleEsriImagery,
   onOpenAIAssist,
   isAIAssistOpen = false,
 }) => {
@@ -119,7 +123,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   
   const isTopoActive = activeLayers.includes('topo');
   const activeBaseLayer = activeLayers.find(layer => ['esri-hd', 'esri-2d'].includes(layer)) || 'esri-hd';
-  const isLayersActive = isTopoActive || activeTrailOverlays.size > 0 || showOutdoorPOIs;
+  const isLayersActive = isTopoActive || activeTrailOverlays.size > 0 || showOutdoorPOIs || !esriImageryEnabled;
   
   const handleToggleLayer = (layerType: string) => {
     onToggleLayer(layerType);
@@ -179,6 +183,47 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                         >
                           <X className="h-4 w-4 text-white/70" />
                         </button>
+                      </div>
+
+                      <div className="px-3 pt-3 pb-1">
+                        <span className="text-xs text-white/50 font-medium uppercase tracking-wider">Satellite Imagery</span>
+                      </div>
+                      <div 
+                        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors"
+                        onClick={onToggleEsriImagery}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          esriImageryEnabled ? "border-transparent bg-sky-600" : "border-white/30"
+                        )}>
+                          {esriImageryEnabled && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <Satellite className="h-4 w-4 text-sky-400" />
+                        <div className="flex flex-col">
+                          <span className="text-sm text-white">ESRI HD Satellite</span>
+                          <span className="text-[10px] text-white/40">High-res overlay imagery</span>
+                        </div>
+                      </div>
+                      <div 
+                        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors border-b border-white/10"
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          "border-transparent bg-indigo-600"
+                        )}>
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <Eye className="h-4 w-4 text-indigo-400" />
+                        <div className="flex flex-col">
+                          <span className="text-sm text-white">Mapbox Satellite</span>
+                          <span className="text-[10px] text-white/40">Always on (base layer)</span>
+                        </div>
                       </div>
 
                       <div 

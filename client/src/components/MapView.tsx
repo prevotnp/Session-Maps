@@ -220,7 +220,10 @@ const MapView: React.FC<MapViewProps> = ({
     isTrailInfoLoading,
     // Outdoor POIs
     showOutdoorPOIs,
-    setShowOutdoorPOIs
+    setShowOutdoorPOIs,
+    // ESRI imagery
+    esriImageryEnabled,
+    toggleEsriImagery
   } = useMapbox(mapContainerRef);
   
   const { isLoading: isOutdoorPOIsLoading } = useOutdoorPOIs(map, showOutdoorPOIs);
@@ -2212,6 +2215,8 @@ const MapView: React.FC<MapViewProps> = ({
         showOutdoorPOIs={showOutdoorPOIs}
         isOutdoorPOIsLoading={isOutdoorPOIsLoading}
         onToggleOutdoorPOIs={() => setShowOutdoorPOIs(!showOutdoorPOIs)}
+        esriImageryEnabled={esriImageryEnabled}
+        onToggleEsriImagery={toggleEsriImagery}
         onOpenAIAssist={() => setIsAIAssistOpen(!isAIAssistOpen)}
         isAIAssistOpen={isAIAssistOpen}
       />
