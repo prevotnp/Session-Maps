@@ -126,11 +126,21 @@ export default function RouteBuilderModal({
     label: string;
     source: 'trail_data' | 'community';
     description: string;
+    color: string;
     waypoints: Array<{ name: string; lat: number; lng: number; description?: string }>;
     communityRouteId?: number;
     communityAuthor?: string;
   }> | null>(null);
   const [aiConversationHistory, setAiConversationHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [aiPreviewRoutes, setAiPreviewRoutes] = useState<Array<{
+    label: string;
+    source: 'trail_data' | 'community';
+    description: string;
+    color: string;
+    waypoints: Array<{ name: string; lat: number; lng: number; description?: string }>;
+    communityRouteId?: number;
+    communityAuthor?: string;
+  }> | null>(null);
   const [originalWaypointPositions, setOriginalWaypointPositions] = useState<string>('');
 
   // Initialize notes and photos when editing
@@ -655,6 +665,146 @@ export default function RouteBuilderModal({
     }
   }, [routeState.selectedWaypoints, routeState.routingMode, existingWaypoints, temporaryWaypoints, map, toast]);
 
+  const ROUTE_COLORS: Record<string, string> = {
+    blue: '#3B82F6',
+    orange: '#F97316',
+    green: '#22C55E',
+  };
+
+  const previewClickHandlersRef = useRef<Map<string, (e: any) => void>>(new Map());
+  const previewEnterHandlersRef = useRef<Map<string, () => void>>(new Map());
+  const previewLeaveHandlersRef = useRef<Map<string, () => void>>(new Map());
+
+  const clearPreviewRoutes = useCallback(() => {
+    if (!map) return;
+    ['blue', 'orange', 'green'].forEach(color => {
+      const layerId = `ai-preview-route-${color}`;
+      const sourceId = `ai-preview-source-${color}`;
+      const outlineId = `ai-preview-outline-${color}`;
+
+      const clickHandler = previewClickHandlersRef.current.get(layerId);
+      const enterHandler = previewEnterHandlersRef.current.get(layerId);
+      const leaveHandler = previewLeaveHandlersRef.current.get(layerId);
+      if (clickHandler) { try { map.off('click', layerId, clickHandler); } catch {} }
+      if (enterHandler) { try { map.off('mouseenter', layerId, enterHandler); } catch {} }
+      if (leaveHandler) { try { map.off('mouseleave', layerId, leaveHandler); } catch {} }
+
+      try {
+        if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      } catch (e) { /* ignore */ }
+    });
+    previewClickHandlersRef.current.clear();
+    previewEnterHandlersRef.current.clear();
+    previewLeaveHandlersRef.current.clear();
+    document.querySelectorAll('.ai-preview-marker').forEach(el => el.remove());
+  }, [map]);
+
+  const drawPreviewRoutes = useCallback((options: Array<{
+    color: string;
+    waypoints: Array<{ name: string; lat: number; lng: number; description?: string }>;
+    label: string;
+    description?: string;
+  }>) => {
+    if (!map) return;
+
+    clearPreviewRoutes();
+
+    options.forEach((option, optIndex) => {
+      const color = option.color || 'blue';
+      const hexColor = ROUTE_COLORS[color] || ROUTE_COLORS.blue;
+      const layerId = `ai-preview-route-${color}`;
+      const sourceId = `ai-preview-source-${color}`;
+      const outlineId = `ai-preview-outline-${color}`;
+
+      const coordinates = option.waypoints.map(wp => [wp.lng, wp.lat]);
+
+      const geojson: GeoJSON.Feature = {
+        type: 'Feature',
+        properties: { label: option.label, color: color },
+        geometry: {
+          type: 'LineString',
+          coordinates,
+        },
+      };
+
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: geojson,
+      });
+
+      map.addLayer({
+        id: outlineId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#000000', 'line-width': 6, 'line-opacity': 0.3 },
+      });
+
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': hexColor, 'line-width': 4, 'line-opacity': 0.85 },
+      });
+
+      const startWp = option.waypoints[0];
+      if (startWp) {
+        const el = document.createElement('div');
+        el.className = 'ai-preview-marker';
+        el.style.cssText = `
+          width: 28px; height: 28px; border-radius: 50%;
+          background: ${hexColor}; border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+          cursor: pointer; display: flex; align-items: center;
+          justify-content: center; font-size: 12px; font-weight: bold; color: white;
+        `;
+        el.textContent = String(optIndex + 1);
+        el.title = option.label;
+
+        new mapboxgl.Marker({ element: el })
+          .setLngLat([startWp.lng, startWp.lat])
+          .addTo(map);
+      }
+    });
+
+    ['blue', 'orange', 'green'].forEach(color => {
+      const layerId = `ai-preview-route-${color}`;
+      if (map.getLayer(layerId)) {
+        const clickHandler = (e: any) => {
+          const label = e.features?.[0]?.properties?.label;
+          if (label) {
+            const option = options.find(o => o.label === label);
+            if (option) {
+              new mapboxgl.Popup({ closeButton: true, maxWidth: '250px' })
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                  <div style="font-family: system-ui; font-size: 13px;">
+                    <strong style="color: ${ROUTE_COLORS[color] || '#3B82F6'}">${option.label}</strong>
+                    <p style="margin: 4px 0; color: #666; font-size: 11px;">${option.description || ''}</p>
+                    <p style="margin: 4px 0; font-size: 11px; color: #888;">${option.waypoints.length} waypoints</p>
+                  </div>
+                `)
+                .addTo(map);
+            }
+          }
+        };
+        const enterHandler = () => { map.getCanvas().style.cursor = 'pointer'; };
+        const leaveHandler = () => { map.getCanvas().style.cursor = ''; };
+
+        map.on('click', layerId, clickHandler);
+        map.on('mouseenter', layerId, enterHandler);
+        map.on('mouseleave', layerId, leaveHandler);
+
+        previewClickHandlersRef.current.set(layerId, clickHandler);
+        previewEnterHandlersRef.current.set(layerId, enterHandler);
+        previewLeaveHandlersRef.current.set(layerId, leaveHandler);
+      }
+    });
+  }, [map, clearPreviewRoutes]);
+
   const generateAiRoute = useCallback(async () => {
     if (!aiPrompt.trim()) return;
 
@@ -662,6 +812,9 @@ export default function RouteBuilderModal({
     setAiError(null);
     setAiResponse(null);
     setAiRouteOptions(null);
+    setAiPreviewRoutes(null);
+
+    clearPreviewRoutes();
 
     try {
       const mapCenter = map ? map.getCenter() : null;
@@ -708,6 +861,30 @@ export default function RouteBuilderModal({
       setAiResponse(data.message);
       setAiRouteOptions(data.routeOptions || null);
 
+      if (data.routeOptions && data.routeOptions.length > 0 && map) {
+        setAiPreviewRoutes(data.routeOptions);
+        drawPreviewRoutes(data.routeOptions);
+
+        if (data.flyToCenter) {
+          map.flyTo({
+            center: [data.flyToCenter.lng, data.flyToCenter.lat],
+            zoom: 13,
+            duration: 2000,
+          });
+        } else {
+          const allWaypoints = data.routeOptions.flatMap((opt: any) => opt.waypoints);
+          if (allWaypoints.length >= 2) {
+            const lngs = allWaypoints.map((wp: any) => wp.lng);
+            const lats = allWaypoints.map((wp: any) => wp.lat);
+            const bounds = new mapboxgl.LngLatBounds(
+              [Math.min(...lngs), Math.min(...lats)],
+              [Math.max(...lngs), Math.max(...lats)]
+            );
+            map.fitBounds(bounds, { padding: 80, duration: 2000 });
+          }
+        }
+      }
+
       setAiConversationHistory(prev => [
         ...prev,
         { role: 'user' as const, content: aiPrompt.trim() },
@@ -722,7 +899,7 @@ export default function RouteBuilderModal({
     } finally {
       setIsGeneratingAiRoute(false);
     }
-  }, [aiPrompt, routeState, map, aiConversationHistory]);
+  }, [aiPrompt, routeState, map, aiConversationHistory, clearPreviewRoutes, drawPreviewRoutes]);
 
   const applyAiRouteOption = useCallback((option: {
     label: string;
@@ -733,6 +910,9 @@ export default function RouteBuilderModal({
       setAiError("This route option doesn't have enough waypoints.");
       return;
     }
+
+    clearPreviewRoutes();
+    setAiPreviewRoutes(null);
 
     const waypointCoordinates = option.waypoints.map((wp, index) => ({
       name: wp.name || `Waypoint ${index + 1}`,
@@ -773,7 +953,7 @@ export default function RouteBuilderModal({
         'Calculating route...'
       }`,
     });
-  }, [clearEditableRouteWaypoints, routeState.routingMode, toast]);
+  }, [clearEditableRouteWaypoints, clearPreviewRoutes, routeState.routingMode, toast]);
   
   // Helper function to calculate distance between two points (in meters)
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -1037,6 +1217,8 @@ export default function RouteBuilderModal({
     setIsGeneratingAiRoute(false);
     setAiWaypointsLoaded(false);
     aiMarkersDisplayedRef.current = false;
+    setAiPreviewRoutes(null);
+    clearPreviewRoutes();
     
     // Remove route preview from map
     if (routeSourceId && map) {
@@ -1300,42 +1482,42 @@ export default function RouteBuilderModal({
                             </p>
                             {aiRouteOptions.map((option, i) => {
                               const isCommunity = option.source === 'community';
+                              const colorHex = ROUTE_COLORS[option.color] || ROUTE_COLORS.blue;
                               return (
                                 <div
                                   key={i}
-                                  className={`rounded-md border p-2.5 ${
-                                    isCommunity
-                                      ? 'border-purple-400/30 bg-purple-400/5'
-                                      : 'border-blue-400/30 bg-blue-400/5'
-                                  }`}
+                                  className="rounded-md border border-white/20 bg-white/5 p-2.5"
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0 flex-1">
-                                      <p className={`text-xs font-semibold ${
-                                        isCommunity ? 'text-purple-300' : 'text-blue-300'
-                                      }`}>
-                                        {isCommunity ? '\uD83D\uDC65 ' : '\uD83D\uDDFA\uFE0F '}{option.label}
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: colorHex }} />
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
+                                          isCommunity ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
+                                        }`}>
+                                          {isCommunity ? 'Community' : 'Trail Data'}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs font-semibold text-foreground">
+                                        {option.label}
                                       </p>
                                       <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                                         {option.description}
                                       </p>
                                       {isCommunity && option.communityAuthor && (
                                         <p className="text-[10px] text-purple-400/60 mt-0.5">
-                                          Route by @{option.communityAuthor} on Session Maps
+                                          Route by @{option.communityAuthor}
                                         </p>
                                       )}
                                       <p className="text-[10px] text-muted-foreground/60 mt-1">
-                                        {option.waypoints.length} waypoints: {option.waypoints.map(wp => wp.name).join(' \u2192 ')}
+                                        {option.waypoints.length} waypoints
                                       </p>
                                     </div>
                                   </div>
                                   <Button
                                     size="sm"
-                                    className={`w-full mt-2 h-7 text-xs gap-1.5 ${
-                                      isCommunity
-                                        ? 'bg-purple-600 hover:bg-purple-700'
-                                        : 'bg-blue-600 hover:bg-blue-700'
-                                    }`}
+                                    className="w-full mt-2 h-7 text-xs gap-1.5"
+                                    style={{ backgroundColor: colorHex }}
                                     onClick={() => applyAiRouteOption(option)}
                                   >
                                     <Plus className="w-3 h-3" />

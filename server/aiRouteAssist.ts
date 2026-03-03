@@ -38,6 +38,38 @@ function sanitizeForApi(text: string): string {
     .replace(/[^\x00-\x7F]/g, ' ');
 }
 
+async function geocodeLocation(query: string): Promise<Array<{
+  name: string;
+  lat: number;
+  lng: number;
+  fullName: string;
+  relevance: number;
+}>> {
+  const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.VITE_MAPBOX_ACCESS_TOKEN;
+  if (!token) return [];
+
+  try {
+    const encoded = encodeURIComponent(query);
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=5&types=poi,place,locality,neighborhood,region`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    if (!data.features || data.features.length === 0) return [];
+
+    return data.features.map((f: any) => ({
+      name: f.text,
+      lat: f.center[1],
+      lng: f.center[0],
+      fullName: f.place_name,
+      relevance: f.relevance,
+    }));
+  } catch (e) {
+    console.error('[AI Route Assist] Geocoding error:', e);
+    return [];
+  }
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -70,6 +102,7 @@ interface RouteOption {
   label: string;
   source: 'trail_data' | 'community';
   description: string;
+  color: string;
   waypoints: SuggestedWaypoint[];
   communityRouteId?: number;
   communityAuthor?: string;
@@ -78,14 +111,16 @@ interface RouteOption {
 interface RouteAssistResponse {
   message: string;
   routeOptions?: RouteOption[];
+  flyToCenter?: { lat: number; lng: number; name: string };
 }
 
 async function fetchTrailDataForArea(
   center: { lat: number; lng: number },
   zoom: number,
-  activityType: string
+  activityType: string,
+  overrideRadiusDeg?: number
 ): Promise<string> {
-  const radiusDeg = Math.max(0.02, 0.5 / Math.pow(2, Math.max(0, zoom - 10)));
+  const radiusDeg = overrideRadiusDeg || Math.max(0.02, 0.5 / Math.pow(2, Math.max(0, zoom - 10)));
   const south = center.lat - radiusDeg;
   const north = center.lat + radiusDeg;
   const west = center.lng - radiusDeg;
@@ -208,7 +243,7 @@ function summarizeTrailData(osmData: any, activityType: string): string {
     if (name === 'Unnamed trail') continue;
     const types = Array.from(new Set(segments.map(s => s.type))).join(', ');
     const tags = segments[0].tags;
-    let detail = `• ${name} (${types})`;
+    let detail = `- ${name} (${types})`;
     if (tags.sac_scale) detail += ` [difficulty: ${tags.sac_scale}]`;
     if (tags['piste:difficulty']) detail += ` [difficulty: ${tags['piste:difficulty']}]`;
     if (tags['piste:grooming']) detail += ` [grooming: ${tags['piste:grooming']}]`;
@@ -245,12 +280,12 @@ function summarizeTrailData(osmData: any, activityType: string): string {
   }
 
   const unnamed = trailsByName.get('Unnamed trail');
-  if (unnamed) lines.push(`• Plus ${unnamed.length} unnamed trail segments`);
+  if (unnamed) lines.push(`- Plus ${unnamed.length} unnamed trail segments`);
 
   lines.push('');
   lines.push('--- POINTS OF INTEREST ---');
   for (const poi of pois) {
-    let detail = `• ${poi.name} (${poi.type})`;
+    let detail = `- ${poi.name} (${poi.type})`;
     if (poi.ele) detail += ` [elevation: ${Math.round(parseFloat(poi.ele) * 3.28084).toLocaleString()} ft / ${poi.ele}m]`;
     detail += ` [location: ${poi.lat.toFixed(5)}, ${poi.lon.toFixed(5)}]`;
     lines.push(detail);
@@ -389,7 +424,7 @@ function summarizeCommunityRoutes(routes: CommunityRoute[]): string {
       for (const wp of route.waypoints) {
         const [lng, lat] = wp.lngLat;
         const eleFeet = wp.elevation ? Math.round(wp.elevation * 3.28084) : null;
-        lines.push(`    • ${wp.name} (${lat.toFixed(5)}, ${lng.toFixed(5)})${eleFeet ? ` [${eleFeet.toLocaleString()} ft]` : ''}`);
+        lines.push(`    - ${wp.name} (${lat.toFixed(5)}, ${lng.toFixed(5)})${eleFeet ? ` [${eleFeet.toLocaleString()} ft]` : ''}`);
       }
     }
 
@@ -409,7 +444,7 @@ function summarizeCommunityRoutes(routes: CommunityRoute[]): string {
     if (route.pointsOfInterest.length > 0) {
       lines.push(`  Points of Interest marked by creator:`);
       for (const poi of route.pointsOfInterest) {
-        lines.push(`    📍 ${poi.name} (${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)})${poi.note ? ` — ${poi.note}` : ''}`);
+        lines.push(`    * ${poi.name} (${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)})${poi.note ? ` -- ${poi.note}` : ''}`);
       }
     }
 
@@ -423,25 +458,26 @@ function buildSystemPrompt(
   activityType: string,
   trailData: string,
   communityData: string,
+  geocodeResults: string,
   existingRoute?: RouteAssistRequest['existingRoute']
 ): string {
   let activityContext = '';
   switch (activityType) {
     case 'downhill_skiing':
-      activityContext = 'The user is planning a downhill skiing session. Focus on ski runs, lifts, difficulty ratings (green/blue/black/double-black), and efficient lift-to-run sequencing. Consider ability level and suggest warm-up runs before harder terrain.';
+      activityContext = 'The user is planning a downhill skiing session. Focus on ski runs, lifts, difficulty ratings (green/blue/black/double-black), and efficient lift-to-run sequencing.';
       break;
     case 'xc_skiing':
-      activityContext = 'The user is planning a cross-country skiing outing. Focus on groomed Nordic trails, classic vs skate lanes, trail difficulty, and loop options. Consider grooming conditions and flat vs hilly terrain preferences.';
+      activityContext = 'The user is planning a cross-country skiing outing. Focus on groomed Nordic trails, classic vs skate lanes, trail difficulty, and loop options.';
       break;
     case 'mountain_biking':
-      activityContext = 'The user is planning a mountain bike ride. Focus on singletrack, MTB difficulty ratings, trail surface, climbing vs descending, and flow trail options. Consider technical ability and fitness level.';
+      activityContext = 'The user is planning a mountain bike ride. Focus on singletrack, MTB difficulty ratings, trail surface, climbing vs descending.';
       break;
     case 'trail_running':
-      activityContext = 'The user is planning a trail run. Focus on runnable trail surfaces, manageable elevation gain, distance targets, and out-and-back vs loop options.';
+      activityContext = 'The user is planning a trail run. Focus on runnable surfaces, elevation gain, distance targets, and loop vs out-and-back.';
       break;
     case 'hiking':
     default:
-      activityContext = 'The user is planning a hike. Focus on trail conditions, elevation gain/loss, scenic viewpoints, difficulty, distance, and estimated time. Consider turnaround points and bail-out options.';
+      activityContext = 'The user is planning a hike. Focus on trail conditions, elevation, scenic points, difficulty, distance, and estimated time.';
       break;
   }
 
@@ -456,66 +492,82 @@ THE USER HAS AN EXISTING ROUTE LOADED:
 - Distance: ${distMiles} miles
 - Elevation: +${gainFeet} ft / -${lossFeet} ft
 - Routing mode: ${existingRoute.routingMode}
-- Waypoints: ${existingRoute.waypoints.map(wp => {
-      const eleFeet = wp.elevation ? Math.round(wp.elevation * 3.28084) : null;
-      return `${wp.name} (${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}${eleFeet ? `, ${eleFeet}ft` : ''})`;
-    }).join(' → ')}
-You can suggest modifications, extensions, or alternatives to this existing route.
+- Waypoints: ${existingRoute.waypoints.map(wp => `${wp.name} (${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)})`).join(' -> ')}
+You can suggest modifications or alternatives.
 `;
   }
 
-  return `You are an expert outdoor route planning assistant for Session Maps, a trail mapping app focused on the Jackson Hole / Teton County, Wyoming area (though users may explore anywhere). You help users build the most efficient and enjoyable routes for their chosen activity.
+  return `You are an expert outdoor route planning assistant for Session Maps. You help users build routes for hiking, skiing, biking, and trail running.
 
 ${activityContext}
 
-YOU HAVE TWO DATA SOURCES — USE BOTH:
+YOU HAVE ACCESS TO THESE DATA SOURCES:
+1. **OpenStreetMap trail data** -- real trail network data with names, types, difficulty, and coordinates
+2. **Session Maps community routes** -- routes shared by other users with GPS-verified waypoints and personal notes
+3. **Geocoding results** -- location matches for places the user mentioned
 
-1. **OpenStreetMap trail data** — verified trail network data including trail names, types, difficulty ratings, surfaces, and coordinates. This is your primary source for understanding what trails physically exist and how they connect.
+YOUR BEHAVIOR RULES:
 
-2. **Session Maps community routes** — routes created and shared by other Session Maps users who have ACTUALLY hiked/skied/biked these routes in real life. These are GPS-verified, often include personal notes about conditions and tips, and represent proven route choices by experienced local users. Community routes are extremely valuable because they represent real-world-tested itineraries.
+**RULE 1: BE CONVERSATIONAL**
+- If the user's request is vague, ASK CLARIFYING QUESTIONS before building a route.
+- Good questions: "How long of a hike are you looking for?", "Do you want a loop or out-and-back?", "What difficulty level?"
+- If a location is ambiguous (e.g. multiple places with same name), present the options and ask which one.
+- When asking questions, do NOT include any route_option blocks. Just ask your questions.
 
-YOUR DECISION-MAKING PROCESS (follow this every time the user asks for a route):
+**RULE 2: SEARCH GLOBALLY**
+- You are NOT limited to what's on the user's screen. The trail data provided covers the area around whatever location the user is asking about.
+- Use the geocoding results to understand where the user wants to go.
 
-Step 1 — UNDERSTAND THE REQUEST: What activity? How far? How hard? How much time? Loop or out-and-back? Any specific goals (summit, views, lake, etc.)? If the request is vague, ASK CLARIFYING QUESTIONS before suggesting routes. Always ask about fitness level and available time if not mentioned.
+**RULE 3: DENSE WAYPOINTS EVERY MILE**
+- When you suggest a route, place waypoints approximately every 1 mile (1.6 km) along the trail.
+- This means a 5-mile hike should have roughly 6 waypoints (start + one per mile).
+- A 10-mile hike should have roughly 11 waypoints.
+- A 2-mile hike should have at least 3-4 waypoints.
+- Waypoints should follow the actual trail path closely, curving with the trail.
+- Name waypoints using real trail names and landmarks: "Jenny Lake Trail - Mile 1", "Cascade Canyon Junction", "Hidden Falls Viewpoint", etc.
+- For the start and end points, use actual trailhead or parking area names.
+- For loops, the last waypoint should be at or very near the first waypoint.
 
-Step 2 — SEARCH COMMUNITY ROUTES FIRST: Scan the Session Maps community routes data carefully. Look for routes that match the user's criteria — similar distance, similar activity type, relevant location. Community routes are gold because real people have done them and left notes. Even if a community route isn't a perfect match, it may contain useful insights (trailhead info, conditions notes, waypoint names).
+**RULE 4: SUGGEST 1-3 ROUTE OPTIONS**
+When you have enough information to suggest routes, present 1 to 3 options. For each option:
+- Explain the route: distance, elevation, estimated time, difficulty, highlights
+- Compare the options: why someone would choose one over another
+- Use a different label for each so the user can distinguish them
 
-Step 3 — ANALYZE TRAIL DATA: Cross-reference the OSM trail data to understand the full trail network. Identify trail connections, alternative paths, and options the community routes might not cover.
+**RULE 5: USE REAL DATA**
+- Only suggest routes on real trails from the data. Never invent trail names or coordinates.
+- Community routes from other Session Maps users are GPS-verified and trustworthy.
+- When a community route matches, credit the creator with @username.
+- Use imperial units (miles, feet) as primary.
 
-Step 4 — BUILD 1 TO 3 OPTIONS: Present options clearly labeled so the user can compare:
+GEOCODING RESULTS FOR THE USER'S QUERY:
+${geocodeResults}
 
-   **Option A: "AI-Optimized Route"** — Your best recommendation built from analyzing the full trail network. This is the route YOU would design from scratch using all available data, optimized for the user's specific criteria. Use real trail names and coordinates from the OSM data.
+OPENSTREETMAP TRAIL DATA:
+${trailData}
 
-   **Option B: "Community Route by @username"** (include this whenever a relevant community route exists) — A route that another Session Maps user has actually completed and shared. Explain who created it, what they noted about it, and why it's relevant to the user's request. Use the community route's actual GPS-verified waypoint coordinates. Always credit the creator with their @username.
+SESSION MAPS COMMUNITY ROUTES:
+${communityData}
 
-   **Option C** (optional) — A variation when useful. Could be a shorter/longer alternative, different loop direction, easier/harder option, or a hybrid that combines the best of trail data with insights from a community route.
+${existingRouteContext}
 
-   For each option, explain: distance, elevation gain/loss, estimated time, difficulty, what makes it good, and any trade-offs. Directly compare the options so the user can make an informed choice.
+WHEN SUGGESTING ROUTES, include waypoint data in route_option JSON blocks at the END of your message. Format exactly like this:
 
-Step 5 — If no community routes match at all, that's fine — present 1-2 options from trail data alone and briefly mention that no community routes were found for this specific request.
-
-IMPORTANT RULES:
-1. Only suggest routes on REAL trails that appear in the data. Never invent trail names or coordinates.
-2. When referencing a community route, ALWAYS credit the creator (e.g. "This route was shared by @trailrunner42 on Session Maps"). This is mandatory.
-3. Community route waypoints are GPS-verified — they are the most reliable coordinates available. Prefer them when they match the user's needs.
-4. Use imperial units (miles, feet) as primary, with metric in parentheses when helpful.
-5. Be concise but specific. Don't dump raw data — synthesize it into clear, actionable recommendations.
-6. If community routes exist but aren't a good match, briefly mention they exist and explain why you're recommending something different.
-7. When a community route partially matches (e.g. right area but wrong distance), mention it as a reference and explain how your AI-optimized option improves on it for the user's specific needs.
-
-WHEN SUGGESTING ROUTE OPTIONS:
-Include waypoints in special JSON blocks at the END of your message. Each option gets its own block. Format EXACTLY like this:
-
-For trail-data-sourced routes:
 \`\`\`route_option
 {
-  "label": "Scenic Loop via Cascade Canyon",
+  "label": "Jenny Lake Loop (Clockwise)",
   "source": "trail_data",
-  "description": "5.2 mile loop with 1,200ft gain through Cascade Canyon with lake views",
+  "description": "7.1 mile loop, +800ft elevation, 3-4 hours, moderate difficulty",
+  "color": "blue",
   "waypoints": [
-    {"name": "Trailhead Parking", "lat": 43.7500, "lng": -110.8000, "description": "Start here"},
-    {"name": "Cascade Canyon Fork", "lat": 43.7550, "lng": -110.7950, "description": "Bear left at junction"},
-    {"name": "Inspiration Point", "lat": 43.7600, "lng": -110.7900, "description": "Scenic overlook — turnaround"}
+    {"name": "Jenny Lake Trailhead", "lat": 43.7530, "lng": -110.7210, "description": "Start at the parking area"},
+    {"name": "Jenny Lake Trail - Mile 1", "lat": 43.7580, "lng": -110.7260, "description": "Trail follows the lakeshore"},
+    {"name": "Hidden Falls Junction", "lat": 43.7620, "lng": -110.7350, "description": "Side trail to Hidden Falls"},
+    {"name": "Inspiration Point", "lat": 43.7640, "lng": -110.7380, "description": "Scenic overlook, 200ft above lake"},
+    {"name": "Cascade Canyon Mouth", "lat": 43.7660, "lng": -110.7420, "description": "Trail continues along west shore"},
+    {"name": "West Shore - Mile 5", "lat": 43.7590, "lng": -110.7350, "description": "Quieter west side of lake"},
+    {"name": "South End", "lat": 43.7500, "lng": -110.7280, "description": "South end of lake"},
+    {"name": "Jenny Lake Trailhead", "lat": 43.7530, "lng": -110.7210, "description": "Back at start - loop complete"}
   ]
 }
 \`\`\`
@@ -523,29 +575,19 @@ For trail-data-sourced routes:
 For community-sourced routes:
 \`\`\`route_option
 {
-  "label": "@trailrunner42's Cascade Loop",
+  "label": "@trailrunner42's Jenny Lake Loop",
   "source": "community",
-  "description": "Popular 4.8 mile loop shared by @trailrunner42 — rated intermediate, includes Hidden Falls stop",
+  "description": "6.8 mile loop shared by @trailrunner42 - well-marked, family friendly",
+  "color": "orange",
   "communityRouteId": 42,
   "communityAuthor": "trailrunner42",
-  "waypoints": [
-    {"name": "Jenny Lake Trailhead", "lat": 43.7510, "lng": -110.8010, "description": "Well-marked start"},
-    {"name": "Hidden Falls", "lat": 43.7560, "lng": -110.7940, "description": "Worth the stop per @trailrunner42"}
-  ]
+  "waypoints": [...]
 }
 \`\`\`
 
-You may include 1 to 3 route_option blocks. Only include them when you're actually suggesting specific routes — NOT when asking clarifying questions.
+IMPORTANT: Each route option MUST have a different "color" value. Use these colors in order: "blue", "orange", "green". This tells the app which color to draw each route on the map.
 
-${existingRouteContext}
-
-REAL OPENSTREETMAP TRAIL DATA FOR THE CURRENT MAP VIEW:
-${trailData}
-
-SESSION MAPS COMMUNITY ROUTE DATA FOR THE CURRENT MAP VIEW:
-${communityData}
-
-Remember: OSM coordinates are from the verified trail network. Community route coordinates are GPS-verified by real Session Maps users who were physically there. Both are trustworthy — use them confidently. Always prefer named trails over unnamed segments for navigation clarity.`;
+Only include route_option blocks when you are actually suggesting specific routes. Do NOT include them when asking clarifying questions.`;
 }
 
 export async function processRouteAssistRequest(
@@ -558,42 +600,60 @@ export async function processRouteAssistRequest(
     };
   }
 
-  const { mapCenter, mapZoom, activityType } = request;
-  const radiusDeg = Math.max(0.02, 0.5 / Math.pow(2, Math.max(0, mapZoom - 10)));
+  const { mapCenter, mapZoom, activityType, message } = request;
 
-  console.log(`[AI Route Assist] Fetching data for ${activityType} near ${mapCenter.lat.toFixed(4)}, ${mapCenter.lng.toFixed(4)} (zoom ${mapZoom})`);
+  console.log(`[AI Route Assist] Processing: "${message.substring(0, 80)}..." for ${activityType}`);
+
+  const geocodeResults = await geocodeLocation(message);
+  let geocodeContext = '';
+
+  let searchCenter = mapCenter;
+  let searchRadius = Math.max(0.02, 0.5 / Math.pow(2, Math.max(0, mapZoom - 10)));
+
+  if (geocodeResults.length > 0) {
+    searchCenter = { lat: geocodeResults[0].lat, lng: geocodeResults[0].lng };
+    searchRadius = 0.1;
+
+    geocodeContext = 'GEOCODING RESULTS (locations matching the user query):\n';
+    for (const result of geocodeResults) {
+      geocodeContext += `- "${result.fullName}" (${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}) [relevance: ${result.relevance}]\n`;
+    }
+    geocodeContext += `\nUsing "${geocodeResults[0].fullName}" as the primary search area.\n`;
+
+    console.log(`[AI Route Assist] Geocoded to: ${geocodeResults[0].fullName} (${searchCenter.lat.toFixed(4)}, ${searchCenter.lng.toFixed(4)})`);
+  } else {
+    geocodeContext = 'No specific location was identified from the user query. Using the current map view area.\n';
+    console.log(`[AI Route Assist] No geocode match, using map center: ${mapCenter.lat.toFixed(4)}, ${mapCenter.lng.toFixed(4)}`);
+  }
 
   const [trailDataRaw, communityRoutes] = await Promise.all([
-    fetchTrailDataForArea(mapCenter, mapZoom, activityType),
-    fetchCommunityRoutes(mapCenter, radiusDeg, dbStorage),
+    fetchTrailDataForArea(searchCenter, mapZoom, activityType, searchRadius),
+    fetchCommunityRoutes(searchCenter, searchRadius, dbStorage),
   ]);
 
   const trailData = sanitizeForApi(trailDataRaw);
   const communityData = sanitizeForApi(summarizeCommunityRoutes(communityRoutes));
 
-  console.log(`[AI Route Assist] OSM trail data: ${trailData.length} chars`);
-  console.log(`[AI Route Assist] Community routes: ${communityRoutes.length} found nearby`);
+  console.log(`[AI Route Assist] Trail data: ${trailData.length} chars`);
+  console.log(`[AI Route Assist] Community routes: ${communityRoutes.length} found`);
 
-  const systemPrompt = buildSystemPrompt(activityType, trailData, communityData, request.existingRoute);
+  const systemPrompt = buildSystemPrompt(activityType, trailData, communityData, sanitizeForApi(geocodeContext), request.existingRoute);
 
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   const recentHistory = request.conversationHistory.slice(-10);
   for (const msg of recentHistory) {
     messages.push({ role: msg.role, content: sanitizeForApi(msg.content) });
   }
-  messages.push({ role: 'user', content: sanitizeForApi(request.message) });
+  messages.push({ role: 'user', content: sanitizeForApi(message) });
 
   try {
-    console.log(`[AI Route Assist] Sending to Claude (${messages.length} messages, system prompt ${systemPrompt.length} chars)`);
+    console.log(`[AI Route Assist] Sending to Claude (${messages.length} messages, system: ${systemPrompt.length} chars)`);
 
     const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 3000,
+      max_tokens: 4000,
       system: sanitizeForApi(systemPrompt),
-      messages: messages.map(m => ({
-        role: m.role,
-        content: sanitizeForApi(m.content),
-      })),
+      messages: messages.map(m => ({ role: m.role, content: sanitizeForApi(m.content) })),
     });
 
     const assistantMessage = response.content
@@ -613,7 +673,7 @@ export async function processRouteAssistRequest(
         const option = JSON.parse(match[1]);
         parsedOptions.push(option);
       } catch (e) {
-        console.error('[AI Route Assist] Failed to parse route option JSON:', e);
+        console.error('[AI Route Assist] Failed to parse route option:', e);
       }
     }
 
@@ -622,13 +682,21 @@ export async function processRouteAssistRequest(
       cleanMessage = assistantMessage.replace(/```route_option\n[\s\S]*?```/g, '').trim();
     }
 
-    console.log(`[AI Route Assist] Response: ${cleanMessage.length} chars, ${routeOptions?.length || 0} route options (${routeOptions?.filter(o => o.source === 'community').length || 0} from community)`);
+    const flyToCenter = geocodeResults.length > 0
+      ? { lat: geocodeResults[0].lat, lng: geocodeResults[0].lng, name: geocodeResults[0].fullName }
+      : undefined;
 
-    return { message: cleanMessage, routeOptions };
+    console.log(`[AI Route Assist] Response: ${cleanMessage.length} chars, ${routeOptions?.length || 0} options`);
+
+    return {
+      message: cleanMessage,
+      routeOptions,
+      flyToCenter,
+    };
 
   } catch (error: any) {
     console.error('[AI Route Assist] Claude API error:', error);
-    if (error.status === 401) return { message: 'Invalid API key. Please check your ANTHROPIC_API_KEY in Replit Secrets.' };
+    if (error.status === 401) return { message: 'Invalid API key. Please check your ANTHROPIC_API_KEY.' };
     if (error.status === 429) return { message: 'Rate limit reached. Please wait a moment and try again.' };
     return { message: `AI assistant error: ${error.message || 'Unknown error'}. Please try again.` };
   }

@@ -4,13 +4,13 @@ import { X, Send, Sparkles, Loader2, ChevronDown, ChevronUp, MapPin } from 'luci
 type ActivityType = 'hiking' | 'trail_running' | 'downhill_ski' | 'xc_ski' | 'mtb';
 
 interface RouteOption {
-  name: string;
-  description: string;
-  distance_miles: number;
-  elevation_gain_ft: number;
-  difficulty: string;
-  waypoints: Array<{ lat: number; lng: number; name?: string }>;
+  label: string;
   source: 'trail_data' | 'community';
+  description: string;
+  color: string;
+  waypoints: Array<{ lat: number; lng: number; name?: string; description?: string }>;
+  communityRouteId?: number;
+  communityAuthor?: string;
 }
 
 interface ChatMessage {
@@ -43,6 +43,12 @@ const STARTER_SUGGESTIONS = [
   "Plan a challenging all-day hike",
 ];
 
+const COLOR_MAP: Record<string, { border: string; badge: string; dot: string }> = {
+  blue: { border: 'border-blue-500/50', badge: 'bg-blue-500/20 text-blue-300', dot: 'bg-blue-500' },
+  orange: { border: 'border-orange-500/50', badge: 'bg-orange-500/20 text-orange-300', dot: 'bg-orange-500' },
+  green: { border: 'border-green-500/50', badge: 'bg-green-500/20 text-green-300', dot: 'bg-green-500' },
+};
+
 export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom, onAddWaypoints, existingRoute }: AIRouteAssistPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -62,25 +68,6 @@ export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen]);
-
-  const parseRouteOptions = (text: string): RouteOption[] => {
-    const options: RouteOption[] = [];
-    const regex = /```route_option\s*\n([\s\S]*?)```/g;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      try {
-        const parsed = JSON.parse(match[1]);
-        if (parsed.waypoints && Array.isArray(parsed.waypoints)) {
-          options.push(parsed);
-        }
-      } catch { /* skip invalid */ }
-    }
-    return options;
-  };
-
-  const cleanResponseText = (text: string): string => {
-    return text.replace(/```route_option\s*\n[\s\S]*?```/g, '').trim();
-  };
 
   const sendMessage = useCallback(async (messageText: string) => {
     if (!messageText.trim() || isLoading || !mapCenter) return;
@@ -109,23 +96,16 @@ export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom
 
       const data = await response.json();
 
-      if (data.message && !data.response) {
-        const assistantMessage: ChatMessage = { role: 'assistant', content: data.message };
-        setMessages(prev => [...prev, assistantMessage]);
-        setConversationHistory([...newHistory, { role: 'assistant', content: data.message }]);
-      } else {
-        const responseText = data.response || data.message || 'No response received.';
-        const routeOptions = parseRouteOptions(responseText);
-        const cleanText = cleanResponseText(responseText);
+      const responseText = data.message || 'No response received.';
+      const routeOptions = data.routeOptions || [];
 
-        const assistantMessage: ChatMessage = {
-          role: 'assistant',
-          content: cleanText,
-          routeOptions: routeOptions.length > 0 ? routeOptions : undefined,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-        setConversationHistory([...newHistory, { role: 'assistant', content: responseText }]);
-      }
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: responseText,
+        routeOptions: routeOptions.length > 0 ? routeOptions : undefined,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+      setConversationHistory([...newHistory, { role: 'assistant', content: responseText }]);
     } catch (err) {
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -223,25 +203,27 @@ export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom
                   {msg.routeOptions.map((option, j) => {
                     const globalIdx = i * 100 + j;
                     const isExpanded = expandedOptions.has(globalIdx);
-                    const borderColor = option.source === 'community' ? 'border-purple-500/50' : 'border-blue-500/50';
-                    const badgeColor = option.source === 'community' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300';
-                    const badgeText = option.source === 'community' ? 'Community' : 'Trail Data';
+                    const colorStyle = COLOR_MAP[option.color] || COLOR_MAP.blue;
+                    const isCommunity = option.source === 'community';
 
                     return (
-                      <div key={j} className={`border ${borderColor} rounded-lg p-2 bg-black/20`}>
+                      <div key={j} className={`border ${colorStyle.border} rounded-lg p-2 bg-black/20`}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-1">
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${badgeColor}`}>{badgeText}</span>
+                              <div className={`w-2.5 h-2.5 rounded-full ${colorStyle.dot}`} />
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${colorStyle.badge}`}>
+                                {isCommunity ? 'Community' : 'Trail Data'}
+                              </span>
                             </div>
-                            <p className="text-white font-medium text-xs truncate">{option.name}</p>
+                            <p className="text-white font-medium text-xs truncate">{option.label}</p>
                             <p className="text-white/50 text-[10px] mt-0.5">{option.description}</p>
+                            {isCommunity && option.communityAuthor && (
+                              <p className="text-purple-400/60 text-[10px] mt-0.5">
+                                Route by @{option.communityAuthor}
+                              </p>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/60">
-                          <span>{option.distance_miles?.toFixed(1)} mi</span>
-                          <span>{option.elevation_gain_ft?.toLocaleString()} ft gain</span>
-                          <span className="capitalize">{option.difficulty}</span>
                         </div>
 
                         <button
@@ -264,7 +246,7 @@ export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom
                         )}
 
                         <button
-                          onClick={() => onAddWaypoints(option.waypoints, option.name)}
+                          onClick={() => onAddWaypoints(option.waypoints, option.label)}
                           className="w-full mt-2 px-2 py-1.5 rounded-md bg-green-600/80 hover:bg-green-600 text-white text-xs font-medium transition-colors"
                         >
                           Add This Route to Map
@@ -282,7 +264,7 @@ export default function AIRouteAssistPanel({ isOpen, onClose, mapCenter, mapZoom
           <div className="flex justify-start">
             <div className="bg-white/10 rounded-lg px-3 py-2 flex items-center gap-2">
               <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
-              <span className="text-white/60 text-xs">Thinking...</span>
+              <span className="text-white/60 text-xs">Searching trails and planning route...</span>
             </div>
           </div>
         )}
