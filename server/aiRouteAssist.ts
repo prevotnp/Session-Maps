@@ -1,16 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const rawApiKey = process.env.ANTHROPIC_API_KEY || '';
-const nonAsciiChars = [...rawApiKey].filter((ch, i) => ch.charCodeAt(0) > 127);
-if (nonAsciiChars.length > 0) {
-  console.warn(`[AI Route Assist] WARNING: ANTHROPIC_API_KEY contains ${nonAsciiChars.length} non-ASCII character(s) at positions: ${
-    [...rawApiKey].map((ch, i) => ch.charCodeAt(0) > 127 ? `${i}(U+${ch.charCodeAt(0).toString(16).toUpperCase()})` : null).filter(Boolean).join(', ')
-  }. Stripping them.`);
+function getAnthropicClient(): Anthropic {
+  const rawApiKey = process.env.ANTHROPIC_API_KEY || '';
+  const cleanApiKey = rawApiKey.replace(/[^\x20-\x7E]/g, '').trim();
+  if (cleanApiKey.length !== rawApiKey.trim().length) {
+    console.warn(`[AI Route Assist] WARNING: ANTHROPIC_API_KEY had ${rawApiKey.trim().length - cleanApiKey.length} non-ASCII chars stripped (raw length: ${rawApiKey.length}, clean length: ${cleanApiKey.length})`);
+  }
+  return new Anthropic({ apiKey: cleanApiKey });
 }
-const cleanApiKey = rawApiKey.replace(/[^\x20-\x7E]/g, '').trim();
-const anthropic = new Anthropic({
-  apiKey: cleanApiKey,
-});
 
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -585,7 +582,7 @@ export async function processRouteAssistRequest(
   try {
     console.log(`[AI Route Assist] Sending to Claude (${messages.length} messages, system prompt ${systemPrompt.length} chars)`);
 
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 3000,
       system: sanitizeForApi(systemPrompt),
