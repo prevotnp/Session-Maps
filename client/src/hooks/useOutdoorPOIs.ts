@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { escapeHtml } from '@/lib/escapeHtml';
 
@@ -101,12 +101,13 @@ function buildPopupHTML(poi: OutdoorPOI): string {
 export function useOutdoorPOIs(
   map: mapboxgl.Map | null,
   enabled: boolean
-) {
+): { isLoading: boolean } {
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cachedBoundsRef = useRef<CachedBounds[]>([]);
   const allPOIsRef = useRef<OutdoorPOI[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const clearLayers = useCallback(() => {
     if (!map) return;
@@ -227,6 +228,8 @@ export function useOutdoorPOIs(
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    setIsLoading(true);
+
     try {
       const params = new URLSearchParams({
         south: queryBounds.south.toFixed(6),
@@ -258,6 +261,10 @@ export function useOutdoorPOIs(
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error('Failed to fetch outdoor POIs:', err);
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
     }
   }, [map, enabled, updateSource]);
 
@@ -274,6 +281,7 @@ export function useOutdoorPOIs(
       allPOIsRef.current = [];
       cachedBoundsRef.current = [];
       abortControllerRef.current?.abort();
+      setIsLoading(false);
       return;
     }
 
@@ -342,4 +350,6 @@ export function useOutdoorPOIs(
       cachedBoundsRef.current = [];
     };
   }, [clearLayers]);
+
+  return { isLoading };
 }

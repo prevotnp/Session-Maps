@@ -183,6 +183,18 @@
   }
 }
 
+@keyframes loading-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
 /* Pulse animation for team member GPS markers */
 @keyframes member-pulse {
   0% {

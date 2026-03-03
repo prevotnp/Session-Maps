@@ -5611,21 +5611,23 @@ out center;`;
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
     ];
-    for (const url of endpoints) {
-      try {
-        const resp = await fetch(url, {
-          method: 'POST',
-          body: `data=${encodeURIComponent(query)}`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: AbortSignal.timeout(35000),
-        });
-        if (!resp.ok) continue;
-        return await resp.json();
-      } catch {
-        continue;
-      }
+
+    const fetchFromEndpoint = async (url: string): Promise<any> => {
+      const resp = await fetch(url, {
+        method: 'POST',
+        body: `data=${encodeURIComponent(query)}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    };
+
+    try {
+      return await Promise.any(endpoints.map(fetchFromEndpoint));
+    } catch {
+      throw new Error('All Overpass API endpoints failed');
     }
-    throw new Error('All Overpass API endpoints failed');
   }
 
   app.get("/api/outdoor-pois", isAuthenticated, async (req: Request, res: Response) => {

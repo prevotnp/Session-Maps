@@ -28,6 +28,7 @@ interface UnifiedToolbarProps {
   onOpenLiveMap?: () => void;
   isRecordingActive?: boolean;
   showOutdoorPOIs?: boolean;
+  isOutdoorPOIsLoading?: boolean;
   onToggleOutdoorPOIs?: () => void;
   onOpenAIAssist?: () => void;
   isAIAssistOpen?: boolean;
@@ -48,6 +49,7 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   onOpenLiveMap,
   isRecordingActive = false,
   showOutdoorPOIs = false,
+  isOutdoorPOIsLoading = false,
   onToggleOutdoorPOIs,
   onOpenAIAssist,
   isAIAssistOpen = false,
@@ -250,7 +252,17 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                           )}
                         </div>
                         <span className="text-base">⛺</span>
-                        <span className="text-sm text-white">Backcountry Camps & POIs</span>
+                        <div className="flex flex-col flex-1">
+                          <span className="text-sm text-white">Backcountry Camps & POIs</span>
+                          {showOutdoorPOIs && isOutdoorPOIsLoading && (
+                            <div className="mt-1.5 w-full">
+                              <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full animate-[loading-bar_1.5s_ease-in-out_infinite]" style={{ width: '40%' }} />
+                              </div>
+                              <span className="text-[10px] text-emerald-400/80 mt-0.5">Loading POIs...</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

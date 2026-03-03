@@ -223,7 +223,7 @@ const MapView: React.FC<MapViewProps> = ({
     setShowOutdoorPOIs
   } = useMapbox(mapContainerRef);
   
-  useOutdoorPOIs(map, showOutdoorPOIs);
+  const { isLoading: isOutdoorPOIsLoading } = useOutdoorPOIs(map, showOutdoorPOIs);
   
   // Sync activeDroneLayers with activeDroneImages from useMapbox
   useEffect(() => {
@@ -2210,6 +2210,7 @@ const MapView: React.FC<MapViewProps> = ({
         onOpenLiveMap={() => setShowLiveMapModal(true)}
         isRecordingActive={showRecordingOverlay}
         showOutdoorPOIs={showOutdoorPOIs}
+        isOutdoorPOIsLoading={isOutdoorPOIsLoading}
         onToggleOutdoorPOIs={() => setShowOutdoorPOIs(!showOutdoorPOIs)}
         onOpenAIAssist={() => setIsAIAssistOpen(!isAIAssistOpen)}
         isAIAssistOpen={isAIAssistOpen}
