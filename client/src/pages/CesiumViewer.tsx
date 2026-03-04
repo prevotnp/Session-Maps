@@ -106,6 +106,7 @@ export default function CesiumViewer() {
   const [mapOverlayLoading, setMapOverlayLoading] = useState(false);
 
   const [isRouteBuilderOpen, setIsRouteBuilderOpen] = useState(false);
+  const [showControlHints, setShowControlHints] = useState(true);
   const [isRoutesListOpen, setIsRoutesListOpen] = useState(false);
   const [viewingRoute, setViewingRoute] = useState<Route | null>(null);
   const [editingRoute, setEditingRoute] = useState<Route | null>(null);
@@ -236,6 +237,7 @@ export default function CesiumViewer() {
         ];
         controller.rotateEventTypes = [C.CameraEventType.LEFT_DRAG];
         controller.lookEventTypes = [];
+        controller.enableLook = false;
 
         viewer.scene.preRender.addEventListener(() => {
           const camera = viewer.camera;
@@ -338,6 +340,13 @@ export default function CesiumViewer() {
       tilesetRef.current = null;
     };
   }, [tileset]);
+
+  useEffect(() => {
+    if (showControlHints) {
+      const timer = setTimeout(() => setShowControlHints(false), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [showControlHints]);
 
   const handleMeasureClick = useCallback(() => {
     const viewer = viewerRef.current;
@@ -1195,6 +1204,21 @@ export default function CesiumViewer() {
             <span>Re-center</span>
           </button>
         </div>
+      )}
+
+      {showControlHints ? (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-black/70 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full whitespace-nowrap">
+          <span className="hidden sm:inline">Drag to orbit • Right-drag or scroll to zoom • Middle-drag to tilt</span>
+          <span className="sm:hidden">Drag to orbit • Pinch to zoom • Two-finger drag to tilt</span>
+        </div>
+      ) : (
+        <button
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-8 h-8 rounded-full bg-black/50 text-white/50 hover:text-white hover:bg-black/70 flex items-center justify-center text-sm font-medium transition-colors"
+          onClick={() => setShowControlHints(true)}
+          title="Show navigation controls"
+        >
+          ?
+        </button>
       )}
 
       {isRouteBuilderOpen && viewerRef.current && tilesetId && (
