@@ -181,10 +181,19 @@ export default function CesiumViewer() {
         });
 
         viewer.scene.backgroundColor = C.Color.fromCssColorString('#1a1a2e');
-        viewer.scene.globe.show = false;
+
+        viewer.scene.globe.show = true;
+        viewer.scene.globe.baseColor = C.Color.fromCssColorString('#1a1a2e');
+        viewer.scene.globe.enableLighting = false;
+        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.globe.depthTestAgainstTerrain = false;
+
+        viewer.imageryLayers.removeAll();
+
         if (viewer.scene.sun) viewer.scene.sun.show = false;
         if (viewer.scene.moon) viewer.scene.moon.show = false;
         if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+        if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
         viewerRef.current = viewer;
 
         const tilesetUrl = tileset.tilesetJsonUrl;
@@ -223,9 +232,12 @@ export default function CesiumViewer() {
 
         const controller = viewer.scene.screenSpaceCameraController;
         controller.enableCollisionDetection = true;
-        controller.minimumZoomDistance = 2.0;
-        controller.maximumZoomDistance = boundingSphere.radius * 8;
+        controller.minimumZoomDistance = Math.max(2.0, boundingSphere.radius * 0.1);
+        controller.maximumZoomDistance = boundingSphere.radius * 4;
+        controller.enableLook = false;
+        controller.lookEventTypes = [];
 
+        controller.rotateEventTypes = [C.CameraEventType.LEFT_DRAG];
         controller.zoomEventTypes = [
           C.CameraEventType.RIGHT_DRAG,
           C.CameraEventType.WHEEL,
@@ -235,129 +247,41 @@ export default function CesiumViewer() {
           C.CameraEventType.MIDDLE_DRAG,
           { eventType: C.CameraEventType.PINCH, modifier: undefined },
         ];
-        controller.rotateEventTypes = [C.CameraEventType.LEFT_DRAG];
-        controller.lookEventTypes = [];
-        controller.enableLook = false;
-
-        const tilesetUp = C.Cartesian3.normalize(
-          tilesetCenter.clone(), new C.Cartesian3()
-        );
-
-        const maxAngleFromUp = C.Math.toRadians(85);
-        const maxDistance = boundingSphere.radius * 6;
-        const minDistance = 2.0;
-
-        let isCorrectingCamera = false;
 
         viewer.scene.preRender.addEventListener(() => {
-          if (isCorrectingCamera) return;
           if (!viewer || viewer.isDestroyed()) return;
+          const camera = viewer.camera;
 
-          isCorrectingCamera = true;
+          if (Math.abs(camera.roll) > 0.01) {
+            camera.setView({
+              orientation: {
+                heading: camera.heading,
+                pitch: camera.pitch,
+                roll: 0,
+              },
+            });
+          }
 
-          try {
-            const camera = viewer.camera;
-            const cameraPosition = camera.positionWC;
-            let needsFix = false;
-            let newPosition = cameraPosition;
-
-            const centerToCamera = C.Cartesian3.subtract(
-              cameraPosition, tilesetCenter, new C.Cartesian3()
+          const dist = C.Cartesian3.distance(camera.positionWC, tilesetCenter);
+          const maxLeash = boundingSphere.radius * 5;
+          if (dist > maxLeash) {
+            const dir = C.Cartesian3.subtract(
+              camera.positionWC, tilesetCenter, new C.Cartesian3()
             );
-            const distanceFromCenter = C.Cartesian3.magnitude(centerToCamera);
-
-            const centerToCameraDir = C.Cartesian3.normalize(
-              centerToCamera, new C.Cartesian3()
+            C.Cartesian3.normalize(dir, dir);
+            const corrected = C.Cartesian3.add(
+              tilesetCenter,
+              C.Cartesian3.multiplyByScalar(dir, maxLeash, new C.Cartesian3()),
+              new C.Cartesian3()
             );
-
-            const dotProduct = C.Cartesian3.dot(tilesetUp, centerToCameraDir);
-            const cosMinAllowed = Math.cos(maxAngleFromUp);
-
-            if (dotProduct < cosMinAllowed) {
-              const upComponent = C.Cartesian3.multiplyByScalar(
-                tilesetUp, C.Cartesian3.dot(centerToCamera, tilesetUp), new C.Cartesian3()
-              );
-              const lateralComponent = C.Cartesian3.subtract(
-                centerToCamera, upComponent, new C.Cartesian3()
-              );
-
-              const lateralMag = C.Cartesian3.magnitude(lateralComponent);
-
-              if (lateralMag > 0.001) {
-                const lateralDir = C.Cartesian3.normalize(lateralComponent, new C.Cartesian3());
-                const newUpMag = distanceFromCenter * Math.cos(maxAngleFromUp);
-                const newLateralMag = distanceFromCenter * Math.sin(maxAngleFromUp);
-
-                const newUp = C.Cartesian3.multiplyByScalar(tilesetUp, newUpMag, new C.Cartesian3());
-                const newLateral = C.Cartesian3.multiplyByScalar(lateralDir, newLateralMag, new C.Cartesian3());
-
-                newPosition = C.Cartesian3.add(
-                  tilesetCenter,
-                  C.Cartesian3.add(newUp, newLateral, new C.Cartesian3()),
-                  new C.Cartesian3()
-                );
-              } else {
-                const arbitraryLateral = new C.Cartesian3(1, 0, 0);
-                const crossDir = C.Cartesian3.cross(tilesetUp, arbitraryLateral, new C.Cartesian3());
-                C.Cartesian3.normalize(crossDir, crossDir);
-
-                const newUpMag = distanceFromCenter * Math.cos(maxAngleFromUp);
-                const newLateralMag = distanceFromCenter * Math.sin(maxAngleFromUp);
-
-                const newUp = C.Cartesian3.multiplyByScalar(tilesetUp, newUpMag, new C.Cartesian3());
-                const newLateral = C.Cartesian3.multiplyByScalar(crossDir, newLateralMag, new C.Cartesian3());
-
-                newPosition = C.Cartesian3.add(
-                  tilesetCenter,
-                  C.Cartesian3.add(newUp, newLateral, new C.Cartesian3()),
-                  new C.Cartesian3()
-                );
-              }
-              needsFix = true;
-            }
-
-            if (distanceFromCenter > maxDistance) {
-              const dir = C.Cartesian3.normalize(
-                C.Cartesian3.subtract(newPosition, tilesetCenter, new C.Cartesian3()),
-                new C.Cartesian3()
-              );
-              newPosition = C.Cartesian3.add(
-                tilesetCenter,
-                C.Cartesian3.multiplyByScalar(dir, maxDistance, new C.Cartesian3()),
-                new C.Cartesian3()
-              );
-              needsFix = true;
-            }
-
-            if (distanceFromCenter < minDistance) {
-              const dir = C.Cartesian3.normalize(
-                C.Cartesian3.subtract(newPosition, tilesetCenter, new C.Cartesian3()),
-                new C.Cartesian3()
-              );
-              newPosition = C.Cartesian3.add(
-                tilesetCenter,
-                C.Cartesian3.multiplyByScalar(dir, minDistance, new C.Cartesian3()),
-                new C.Cartesian3()
-              );
-              needsFix = true;
-            }
-
-            if (Math.abs(camera.roll) > 0.01) {
-              needsFix = true;
-            }
-
-            if (needsFix) {
-              camera.setView({
-                destination: newPosition,
-                orientation: {
-                  heading: camera.heading,
-                  pitch: camera.pitch,
-                  roll: 0,
-                },
-              });
-            }
-          } finally {
-            isCorrectingCamera = false;
+            camera.setView({
+              destination: corrected,
+              orientation: {
+                heading: camera.heading,
+                pitch: camera.pitch,
+                roll: 0,
+              },
+            });
           }
         });
 
