@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Route as RouteIcon, Map, Clock, Ruler, Mountain, X, UserPlus, Trash2, Share2, Box } from 'lucide-react';
+import { Route as RouteIcon, Map, Clock, Ruler, Mountain, X, UserPlus, Trash2, Share2, Box, Search } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Route } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -36,6 +36,7 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedRouteForSharing, setSelectedRouteForSharing] = useState<RouteWithSharing | null>(null);
   const [friendUsername, setFriendUsername] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch saved routes
   const { data: routes = [], isLoading } = useQuery<RouteWithSharing[]>({
@@ -131,6 +132,44 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
   // Separate routes into owned and shared
   const myRoutes = routes.filter(r => r.isOwner !== false);
   const sharedWithMe = routes.filter(r => r.isShared === true);
+
+  const sortRoutesBySearch = (routeList: RouteWithSharing[]) => {
+    if (!searchQuery.trim()) return routeList;
+    const query = searchQuery.toLowerCase().trim();
+    const matches: RouteWithSharing[] = [];
+    const nonMatches: RouteWithSharing[] = [];
+    for (const route of routeList) {
+      const nameMatch = route.name?.toLowerCase().includes(query);
+      const descMatch = route.description?.toLowerCase().includes(query);
+      if (nameMatch || descMatch) {
+        matches.push(route);
+      } else {
+        nonMatches.push(route);
+      }
+    }
+    matches.sort((a, b) => {
+      const aNameMatch = a.name?.toLowerCase().includes(query) ? 0 : 1;
+      const bNameMatch = b.name?.toLowerCase().includes(query) ? 0 : 1;
+      return aNameMatch - bNameMatch;
+    });
+    return [...matches, ...nonMatches];
+  };
+
+  const filteredMyRoutes = sortRoutesBySearch(myRoutes);
+  const filteredSharedRoutes = sortRoutesBySearch(sharedWithMe);
+
+  const matchingRouteIds = new Set<number>();
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim();
+    for (const route of routes) {
+      if (
+        route.name?.toLowerCase().includes(query) ||
+        route.description?.toLowerCase().includes(query)
+      ) {
+        matchingRouteIds.add(route.id);
+      }
+    }
+  }
 
   const formatDistance = (distance: string | number) => {
     const distanceNum = typeof distance === 'string' ? parseFloat(distance) : distance;
@@ -320,7 +359,12 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSearchQuery('');
+          onClose();
+        }
+      }}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -365,9 +409,42 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                     <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
                       My Routes ({myRoutes.length})
                     </h3>
+
+                    {myRoutes.length > 1 && (
+                      <div className="relative mb-4">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="text"
+                          placeholder="Search routes..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9 pr-9 h-10 w-full"
+                          data-testid="input-search-routes"
+                        />
+                        {searchQuery && (
+                          <button
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() => setSearchQuery('')}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                        {searchQuery.trim() && (
+                          <p className="text-xs text-muted-foreground mt-1.5 ml-1">
+                            {matchingRouteIds.size} {matchingRouteIds.size === 1 ? 'match' : 'matches'} found
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="space-y-4">
-                      {myRoutes.map((route) => (
-                        <RouteCard key={route.id} route={route} isSharedRoute={false} />
+                      {filteredMyRoutes.map((route) => (
+                        <div
+                          key={route.id}
+                          className={searchQuery.trim() && !matchingRouteIds.has(route.id) ? 'opacity-40' : ''}
+                        >
+                          <RouteCard route={route} isSharedRoute={false} />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -380,8 +457,13 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                       Routes Shared with Me ({sharedWithMe.length})
                     </h3>
                     <div className="space-y-4">
-                      {sharedWithMe.map((route) => (
-                        <RouteCard key={route.id} route={route} isSharedRoute={true} />
+                      {filteredSharedRoutes.map((route) => (
+                        <div
+                          key={route.id}
+                          className={searchQuery.trim() && !matchingRouteIds.has(route.id) ? 'opacity-40' : ''}
+                        >
+                          <RouteCard route={route} isSharedRoute={true} />
+                        </div>
                       ))}
                     </div>
                   </div>
