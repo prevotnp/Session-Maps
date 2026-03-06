@@ -77,14 +77,18 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ onTabChange }) => {
         </Link>
         
         {isAdmin && (
-          <button 
-            className="py-3 px-2 sm:px-4 flex flex-col items-center text-primary min-w-[48px] min-h-[48px] active:scale-95 transition-transform"
-            onClick={() => onTabChange('uploadDrone')}
-            data-testid="button-upload-drone"
-          >
-            <Upload className="h-6 w-6 sm:h-7 sm:w-7" />
-            <span className="text-[10px] sm:text-xs mt-1 font-medium text-center leading-tight">Upload</span>
-          </button>
+          <Link href="/upload">
+            <div
+              className={cn(
+                "py-3 px-2 sm:px-4 flex flex-col items-center cursor-pointer min-w-[48px] min-h-[48px] active:scale-95 transition-transform",
+                location === "/upload" ? "text-primary" : "text-white/80 hover:text-white"
+              )}
+              data-testid="button-upload-drone"
+            >
+              <Upload className="h-6 w-6 sm:h-7 sm:w-7" />
+              <span className="text-[10px] sm:text-xs mt-1 font-medium text-center leading-tight">Upload</span>
+            </div>
+          </Link>
         )}
         
         <button 

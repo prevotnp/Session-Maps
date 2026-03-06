@@ -103,11 +103,11 @@ app.use((req, res, next) => {
   // On Replit, port 5000 is the only non-firewalled port.
   const port = parseInt(process.env.PORT || "5000", 10);
   
-  // Increase server timeout for large file uploads (30 minutes)
-  server.timeout = 30 * 60 * 1000; // 30 minutes
-  server.headersTimeout = 31 * 60 * 1000; // 31 minutes (must be > timeout)
-  server.keepAliveTimeout = 30 * 60 * 1000; // 30 minutes
-  server.requestTimeout = 30 * 60 * 1000; // 30 minutes
+  // Increase server timeout for large file uploads (2 hours)
+  server.timeout = 2 * 60 * 60 * 1000; // 2 hours
+  server.headersTimeout = 2 * 60 * 60 * 1000 + 60000; // 2 hours + 1 min (must be > timeout)
+  server.keepAliveTimeout = 2 * 60 * 60 * 1000; // 2 hours
+  server.requestTimeout = 2 * 60 * 60 * 1000; // 2 hours
   
   server.listen({
     port,

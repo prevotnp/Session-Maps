@@ -85,7 +85,7 @@ const multerStorage = multer.diskStorage({
 const upload = multer({ 
   storage: multerStorage,
   limits: {
-    fileSize: 5000 * 1024 * 1024, // 5GB limit per file
+    fileSize: Infinity, // No size limit for drone imagery
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.tif', '.tiff', '.jpg', '.jpeg', '.png'];
@@ -129,7 +129,7 @@ const modelUpload = multer({
 const modelMultiUpload = multer({ 
   storage: modelMulterStorage,
   limits: {
-    fileSize: 5000 * 1024 * 1024, // 5GB limit per file
+    fileSize: Infinity, // No size limit for 3D model files
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.glb', '.gltf', '.obj', '.ply', '.mtl', '.jpg', '.jpeg', '.png', '.tif', '.tiff'];
@@ -947,7 +947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fs.mkdirSync(extractDir, { recursive: true });
 
         try {
-          execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 });
+          execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 1800000, maxBuffer: 500 * 1024 * 1024 });
         } catch (unzipErr) {
           console.error("ZIP extraction error:", unzipErr);
           fs.rmSync(extractDir, { recursive: true, force: true });
@@ -1191,6 +1191,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/cesium-tilesets", isAdmin, async (req, res) => {
+    try {
+      const tilesets = await dbStorage.getAllCesium3dTilesets();
+      return res.json(tilesets);
+    } catch (error) {
+      console.error("Error fetching all tilesets:", error);
+      return res.status(500).json({ message: "Error fetching tilesets" });
+    }
+  });
+
   app.get("/api/cesium-tilesets/:id", isAuthenticated, async (req, res) => {
     try {
       const tilesetId = parseId(req.params.id);
@@ -1233,7 +1243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { execSync } = await import('child_process');
       try {
-        execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 });
+        execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 1800000, maxBuffer: 500 * 1024 * 1024 });
       } catch (unzipErr) {
         console.error("Cesium tileset ZIP extraction error:", unzipErr);
         fs.rmSync(extractDir, { recursive: true, force: true });

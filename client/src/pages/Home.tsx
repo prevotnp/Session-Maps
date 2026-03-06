@@ -3,7 +3,6 @@ import { useAuth } from '@/hooks/useAuth';
 import MapView from '@/components/MapView';
 import BottomNavigation from '@/components/BottomNavigation';
 import { MessagesModal } from '@/components/modals/MessagesModal';
-import DroneImageryModal from '@/components/modals/DroneImageryModal';
 import LayerManagerModal from '@/components/modals/LayerManagerModal';
 import RoutesModal from '@/components/modals/RoutesModal';
 import { FriendsModal } from '@/components/modals/FriendsModal';
@@ -17,7 +16,6 @@ const Home: React.FC = () => {
   
   // Modal states
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
-  const [isDroneModalOpen, setIsDroneModalOpen] = useState(false);
   const [isLayerModalOpen, setIsLayerModalOpen] = useState(false);
   const [isRoutesModalOpen, setIsRoutesModalOpen] = useState(false);
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
@@ -77,9 +75,6 @@ const Home: React.FC = () => {
       case 'friends':
         setIsFriendsModalOpen(true);
         break;
-      case 'uploadDrone':
-        setIsDroneModalOpen(true);
-        break;
       case 'profile':
         setLocation('/profile');
         break;
@@ -96,7 +91,7 @@ const Home: React.FC = () => {
       {/* Main map view */}
       <MapView 
         onOpenOfflineModal={() => {}}
-        onOpenDroneModal={() => setIsDroneModalOpen(true)}
+        onOpenDroneModal={() => setLocation('/upload')}
         selectedRoute={selectedRoute}
         onRouteDisplayed={() => setSelectedRoute(null)}
         editingRoute={editingRoute}
@@ -116,14 +111,6 @@ const Home: React.FC = () => {
         isOpen={isMessagesModalOpen} 
         onClose={() => setIsMessagesModalOpen(false)}
         onViewProfile={handleViewProfile}
-      />
-      
-      <DroneImageryModal 
-        isOpen={isDroneModalOpen} 
-        onClose={() => setIsDroneModalOpen(false)}
-        onActivateImage={(image) => {
-          setActivatedDroneImage(image);
-        }}
       />
       
       <LayerManagerModal 
