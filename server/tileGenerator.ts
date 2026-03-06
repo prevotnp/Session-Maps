@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import { objectStorageClient } from './replit_integrations/object_storage';
 
 const TILE_SIZE = 512;
+const TEMP_DIR = '/tmp/tile-temp';
 
 export interface ImageBounds {
   north: number;
@@ -36,22 +37,34 @@ export async function generateTilesFromImage(
   const bucketId = getBucketId();
   const bucket = objectStorageClient.bucket(bucketId);
   const basePath = `public/drone-tiles/${imageId}`;
-  const tileDir = `/tmp/drone-tiles-${imageId}`;
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+  const tileDir = `${TEMP_DIR}/drone-tiles-${imageId}`;
 
   fs.rmSync(tileDir, { recursive: true, force: true });
   fs.mkdirSync(tileDir, { recursive: true });
 
   onProgress?.(5, 'Reprojecting to WGS84...');
 
-  const wgs84File = `/tmp/drone_${imageId}_wgs84.tif`;
+  const wgs84File = `${TEMP_DIR}/drone_${imageId}_wgs84.tif`;
+  let needsReproject = true;
   try {
-    execSync(`gdalwarp -t_srs EPSG:4326 -of GTiff -co TILED=YES -co BLOCKXSIZE=512 -co BLOCKYSIZE=512 "${imagePath}" "${wgs84File}"`, { timeout: 600000 });
-  } catch (err: any) {
-    console.error('Reprojection failed:', err.message?.substring(0, 200));
-    throw new Error('Failed to reproject GeoTIFF to WGS84');
+    const projInfo = execSync(`gdalsrsinfo -o proj4 "${imagePath}"`, { timeout: 10000 }).toString();
+    if (projInfo.includes('+proj=longlat') || projInfo.includes('EPSG:4326')) {
+      needsReproject = false;
+      console.log(`Image ${imageId} is already in WGS84, skipping reprojection`);
+    }
+  } catch {}
+
+  if (needsReproject) {
+    try {
+      execSync(`gdalwarp -t_srs EPSG:4326 -of GTiff -co TILED=YES -co COMPRESS=LZW -co BLOCKXSIZE=512 -co BLOCKYSIZE=512 -wm 512 "${imagePath}" "${wgs84File}"`, { timeout: 1200000 });
+    } catch (err: any) {
+      console.error('Reprojection failed:', err.message?.substring(0, 200));
+      throw new Error('Failed to reproject GeoTIFF to WGS84');
+    }
   }
 
-  const sourceFile = fs.existsSync(wgs84File) ? wgs84File : imagePath;
+  const sourceFile = (needsReproject && fs.existsSync(wgs84File)) ? wgs84File : imagePath;
 
   let imgInfo: string;
   try {
@@ -69,7 +82,7 @@ export async function generateTilesFromImage(
 
   onProgress?.(10, `Generating tiles at zoom ${minZoom}-${maxZoom}...`);
 
-  const smallFile = `/tmp/drone_${imageId}_small.tif`;
+  const smallFile = `${TEMP_DIR}/drone_${imageId}_small.tif`;
   try {
     execSync(`gdal_translate -of GTiff -outsize 4096 0 -co TILED=YES "${sourceFile}" "${smallFile}"`, { timeout: 60000 });
     execSync(`gdal2tiles.py --profile=mercator --zoom=${minZoom}-${Math.min(17, maxZoom)} --tilesize=512 --processes=1 --xyz --resampling=bilinear --no-kml "${smallFile}" "${tileDir}"`, { timeout: 120000 });
@@ -82,7 +95,7 @@ export async function generateTilesFromImage(
   onProgress?.(40, 'Generating medium zoom tiles...');
 
   if (maxZoom >= 18) {
-    const medFile = `/tmp/drone_${imageId}_medium.tif`;
+    const medFile = `${TEMP_DIR}/drone_${imageId}_medium.tif`;
     try {
       execSync(`gdal_translate -of GTiff -outsize 12000 0 -co TILED=YES "${sourceFile}" "${medFile}"`, { timeout: 60000 });
       execSync(`gdal2tiles.py --profile=mercator --zoom=18-${Math.min(19, maxZoom)} --tilesize=512 --processes=1 --xyz --resampling=bilinear --no-kml "${medFile}" "${tileDir}"`, { timeout: 120000 });
