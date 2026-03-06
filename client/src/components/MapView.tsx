@@ -1745,7 +1745,13 @@ const MapView: React.FC<MapViewProps> = ({
             setPendingPOILocation(null);
           }}
           isOwner={(user as any)?.id === displayedRoute.userId}
-          onAddPOIMode={(enabled) => setIsAddingPOIMode(enabled)}
+          onAddPOIMode={(enabled) => {
+            setIsAddingPOIMode(enabled);
+            if (enabled) {
+              setIsMarkerMode(false);
+              setIsAddingWaypointMode(false);
+            }
+          }}
           pendingPOILocation={pendingPOILocation}
           onClearPendingPOI={() => setPendingPOILocation(null)}
           onPOIsChanged={() => setPoiRefreshTrigger(prev => prev + 1)}

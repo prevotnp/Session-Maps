@@ -169,6 +169,10 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   
   // Function to finish route building and save
   const finishRouteBuilding = () => {
+    // Reset route building state so clicks no longer add waypoints
+    setIsMarkerMode(false);
+    setIsRouteBuildingMode(false);
+
     return {
       name: currentRouteName,
       description: currentRouteDescription,
