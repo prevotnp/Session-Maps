@@ -1228,28 +1228,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const extractDir = path.join(tilesetUploadDir, `extract-${Date.now()}`);
       fs.mkdirSync(extractDir, { recursive: true });
 
-      const AdmZip = (await import('adm-zip')).default;
-      const zip = new AdmZip(file.path);
-      
-      // Safely extract zip entries (prevent Zip Slip)
-      const entries = zip.getEntries();
-      for (const entry of entries) {
-        const entryPath = path.join(extractDir, entry.entryName);
-        const resolvedPath = path.resolve(entryPath);
-        
-        // Ensure the resolved path is within extractDir (prevent path traversal)
-        if (!resolvedPath.startsWith(path.resolve(extractDir) + path.sep) && resolvedPath !== path.resolve(extractDir)) {
-          // Skip malicious entries
-          console.warn(`Skipping suspicious zip entry: ${entry.entryName}`);
-          continue;
-        }
-        
-        if (entry.isDirectory) {
-          fs.mkdirSync(resolvedPath, { recursive: true });
-        } else {
-          fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
-          fs.writeFileSync(resolvedPath, entry.getData());
-        }
+      const { execSync } = await import('child_process');
+      try {
+        execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 });
+      } catch (unzipErr) {
+        console.error("Cesium tileset ZIP extraction error:", unzipErr);
+        fs.rmSync(extractDir, { recursive: true, force: true });
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ message: "Failed to extract ZIP file. Make sure it's a valid ZIP archive." });
       }
 
       let tilesetJsonPath = '';
