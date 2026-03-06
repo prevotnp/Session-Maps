@@ -907,9 +907,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ==========================================
   
   // Upload 3D model for a drone image (admin only)
-  app.post("/api/admin/drone-models/upload", isAdmin, modelUpload.single('model'), async (req, res) => {
+  app.post("/api/admin/drone-models/upload", isAdmin, modelUpload.array('model', 50), async (req, res) => {
     const user = req.user as any;
-    const file = req.file;
+    const files = req.files as Express.Multer.File[] | undefined;
+    const file = files && files.length > 0 ? files[0] : undefined;
     
     try {
       if (!file) {
@@ -919,37 +920,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { droneImageId, name, centerLat, centerLng, altitude } = req.body;
       
       if (!droneImageId) {
-        fs.unlink(file.path, () => {});
+        if (files) files.forEach(f => fs.unlink(f.path, () => {}));
         return res.status(400).json({ message: "Drone image ID is required" });
       }
 
-      // Check if drone image exists
       const droneImage = await dbStorage.getDroneImage(parseInt(droneImageId));
       if (!droneImage) {
-        fs.unlink(file.path, () => {});
+        if (files) files.forEach(f => fs.unlink(f.path, () => {}));
         return res.status(404).json({ message: "Drone image not found" });
       }
 
-      // Check if a model already exists for this drone image
       const existingModel = await dbStorage.getDroneModelByDroneImageId(parseInt(droneImageId));
       if (existingModel) {
-        fs.unlink(file.path, () => {});
+        if (files) files.forEach(f => fs.unlink(f.path, () => {}));
         return res.status(400).json({ message: "A 3D model already exists for this drone image. Delete it first." });
       }
 
       const fileExt = path.extname(file.originalname).toLowerCase().replace('.', '');
-      const fileSizeMB = Math.round(file.size / (1024 * 1024));
+      const totalSizeMB = Math.round((files || []).reduce((sum, f) => sum + f.size, 0) / (1024 * 1024));
 
-      // Calculate center coordinates from drone image cornerCoordinates (WGS84) if not provided
       let calculatedCenterLat = centerLat;
       let calculatedCenterLng = centerLng;
       
       if (!calculatedCenterLat || !calculatedCenterLng) {
-        // Use cornerCoordinates if available (these are proper WGS84 lat/lng)
         if (droneImage.cornerCoordinates && Array.isArray(droneImage.cornerCoordinates)) {
           const corners = droneImage.cornerCoordinates as [number, number][];
           if (corners.length >= 4) {
-            // Calculate center from all 4 corners
             const avgLng = corners.reduce((sum, c) => sum + c[0], 0) / corners.length;
             const avgLat = corners.reduce((sum, c) => sum + c[1], 0) / corners.length;
             calculatedCenterLat = calculatedCenterLat || avgLat.toString();
@@ -957,31 +953,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Fallback to bounding box fields only if they look like valid WGS84 coordinates
         if (!calculatedCenterLat || !calculatedCenterLng) {
           const neLat = parseFloat(droneImage.northEastLat);
           const swLat = parseFloat(droneImage.southWestLat);
           const neLng = parseFloat(droneImage.northEastLng);
           const swLng = parseFloat(droneImage.southWestLng);
           
-          // Check if values look like valid WGS84 (lat: -90 to 90, lng: -180 to 180)
           if (Math.abs(neLat) <= 90 && Math.abs(swLat) <= 90 && Math.abs(neLng) <= 180 && Math.abs(swLng) <= 180) {
             calculatedCenterLat = calculatedCenterLat || ((neLat + swLat) / 2).toString();
             calculatedCenterLng = calculatedCenterLng || ((neLng + swLng) / 2).toString();
           } else {
-            // Default to a safe fallback if coordinates are invalid
             calculatedCenterLat = calculatedCenterLat || "0";
             calculatedCenterLng = calculatedCenterLng || "0";
           }
         }
       }
 
+      const additionalFiles = files && files.length > 1 
+        ? files.slice(1).map(f => f.path) 
+        : [];
+
       const modelData = {
         droneImageId: parseInt(droneImageId),
         name: name || `3D Model - ${droneImage.name}`,
         filePath: file.path,
         fileType: fileExt,
-        sizeInMB: fileSizeMB,
+        sizeInMB: totalSizeMB,
         centerLat: calculatedCenterLat,
         centerLng: calculatedCenterLng,
         altitude: altitude || null,
@@ -990,11 +987,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const newModel = await dbStorage.createDroneModel(modelData);
 
-      return res.status(201).json(newModel);
+      return res.status(201).json({ ...newModel, additionalFiles: additionalFiles.length });
     } catch (error) {
-      if (file) {
-        fs.unlink(file.path, () => {});
-      }
+      if (files) files.forEach(f => fs.unlink(f.path, () => {}));
       console.error("3D model upload error:", error);
       return res.status(500).json({ message: "Error uploading 3D model" });
     }
