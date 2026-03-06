@@ -2,20 +2,21 @@
 set -e
 
 echo "=== Deployment Build Script ==="
-echo "Moving large files out of workspace to reduce bundle size..."
-
-mkdir -p /tmp/deploy-stash
+echo "Removing large files from deployment copy (dev workspace is unaffected)..."
 
 if [ -d "uploads/drone-imagery" ]; then
-  echo "Stashing uploads/drone-imagery/ (raw TIFFs - not needed in production)"
-  mv uploads/drone-imagery /tmp/deploy-stash/drone-imagery
-  mkdir -p uploads/drone-imagery
+  echo "Clearing uploads/drone-imagery/ (raw TIFFs - served from Object Storage in production)"
+  rm -rf uploads/drone-imagery/*
 fi
 
 if [ -d "uploads/cesium-tilesets" ]; then
-  echo "Stashing uploads/cesium-tilesets/ (served from Object Storage in production)"
-  mv uploads/cesium-tilesets /tmp/deploy-stash/cesium-tilesets
-  mkdir -p uploads/cesium-tilesets
+  echo "Clearing uploads/cesium-tilesets/ (served from Object Storage in production)"
+  rm -rf uploads/cesium-tilesets/*
+fi
+
+if [ -d "uploads/drone-models" ]; then
+  echo "Clearing uploads/drone-models/"
+  rm -rf uploads/drone-models/*
 fi
 
 echo "Running build..."
