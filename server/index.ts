@@ -75,6 +75,30 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
+  (async () => {
+    try {
+      const { db } = await import('./db');
+      const { cesium3dTilesets } = await import('@shared/schema');
+      const { like } = await import('drizzle-orm');
+      const localTilesets = await db.select().from(cesium3dTilesets).where(like(cesium3dTilesets.storagePath, 'local:%'));
+      if (localTilesets.length > 0) {
+        const { syncTilesetToObjectStorage } = await import('./cesiumStorageSync');
+        for (const ts of localTilesets) {
+          const localDir = ts.storagePath!.replace('local:', '');
+          const fs = await import('fs');
+          if (fs.existsSync(localDir)) {
+            console.log(`[Startup] Syncing tileset ${ts.id} to Object Storage...`);
+            syncTilesetToObjectStorage(ts.id, localDir).catch(err => {
+              console.error(`[Startup] Sync failed for tileset ${ts.id}:`, err);
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Startup] Error checking for unsynced tilesets:', e);
+    }
+  })();
+
   // Serve both the API and the client on a single port.
   // On Replit, port 5000 is the only non-firewalled port.
   const port = parseInt(process.env.PORT || "5000", 10);

@@ -1331,6 +1331,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedTileset = await dbStorage.getCesium3dTileset(tilesetRecord.id);
       console.log(`Cesium tileset ${tilesetRecord.id} stored locally at ${tilesetRootDir} with ${allFiles.length} files`);
+
+      import('./cesiumStorageSync').then(({ syncTilesetToObjectStorage }) => {
+        syncTilesetToObjectStorage(tilesetRecord.id, tilesetRootDir).catch(err => {
+          console.error(`[CesiumSync] Background sync failed for tileset ${tilesetRecord.id}:`, err);
+        });
+      });
+
       return res.status(201).json(updatedTileset);
     } catch (error) {
       if (file && fs.existsSync(file.path)) {
@@ -1370,15 +1377,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (tileset.storagePath && tileset.storagePath.startsWith('local:')) {
         const localDir = tileset.storagePath.replace('local:', '');
         const localFile = path.resolve(path.join(localDir, tilePath));
-        if (!localFile.startsWith(path.resolve(localDir))) {
-          return res.status(400).json({ message: "Invalid path" });
-        }
-        if (fs.existsSync(localFile)) {
+        if (localFile.startsWith(path.resolve(localDir)) && fs.existsSync(localFile)) {
           res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
           res.set('Access-Control-Allow-Origin', '*');
           return res.sendFile(localFile);
         }
-        return res.status(404).json({ message: "Tile not found" });
       }
 
       const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
@@ -1388,7 +1391,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { objectStorageClient } = await import('./replit_integrations/object_storage');
       const bucket = objectStorageClient.bucket(bucketId);
-      const objectPath = `public/cesium-tilesets/${tilesetId}/${tilePath}`;
+      const objectPath = tileset.storagePath && !tileset.storagePath.startsWith('local:')
+        ? `${tileset.storagePath}/${tilePath}`
+        : `public/cesium-tilesets/${tilesetId}/${tilePath}`;
       const file = bucket.file(objectPath);
 
       const [exists] = await file.exists();
@@ -1429,6 +1434,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({ message: "Tileset deleted" });
     } catch (error) {
       return res.status(500).json({ message: "Error deleting tileset" });
+    }
+  });
+
+  app.post("/api/cesium-tilesets/:id/sync", isAdmin, async (req, res) => {
+    try {
+      const tilesetId = parseId(req.params.id);
+      const tileset = await dbStorage.getCesium3dTileset(tilesetId);
+      if (!tileset) return res.status(404).json({ message: "Tileset not found" });
+      if (!tileset.storagePath || !tileset.storagePath.startsWith('local:')) {
+        return res.json({ message: "Tileset already synced to Object Storage", storagePath: tileset.storagePath });
+      }
+      const localDir = tileset.storagePath.replace('local:', '');
+      if (!fs.existsSync(localDir)) {
+        return res.status(400).json({ message: "Local directory not found" });
+      }
+      const { syncTilesetToObjectStorage } = await import('./cesiumStorageSync');
+      syncTilesetToObjectStorage(tilesetId, localDir).catch(err => {
+        console.error(`[CesiumSync] Sync failed for tileset ${tilesetId}:`, err);
+      });
+      return res.json({ message: "Sync started in background", tilesetId });
+    } catch (error) {
+      return res.status(500).json({ message: "Error starting sync" });
     }
   });
 
