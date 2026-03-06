@@ -1159,8 +1159,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!requestedPath) {
       return res.status(400).json({ message: "Invalid filename" });
     }
-    const filePath = safePath(modelUploadDir, requestedPath);
-    if (!filePath) {
+    const filePath = path.resolve(path.join(modelUploadDir, requestedPath));
+    if (!filePath.startsWith(path.resolve(modelUploadDir))) {
       return res.status(400).json({ message: "Invalid filename" });
     }
     
