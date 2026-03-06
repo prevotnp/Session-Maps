@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Pencil, Trash2, Box, Loader2 } from 'lucide-react';
+import { X, Upload, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DroneImage, DroneModel, Cesium3dTileset } from '@shared/schema';
+import { DroneImage, Cesium3dTileset } from '@shared/schema';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { formatDate } from '@/lib/utils';
@@ -58,8 +58,6 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
   const [editingImage, setEditingImage] = useState<DroneImage | null>(null);
   const [editName, setEditName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [modelUploadingForId, setModelUploadingForId] = useState<number | null>(null);
-  const [droneModels, setDroneModels] = useState<Record<number, DroneModel | null>>({});
   const [tilesetUploadingForId, setTilesetUploadingForId] = useState<number | null>(null);
   const [tilesetUploadProgress, setTilesetUploadProgress] = useState<string>('');
   
@@ -67,25 +65,6 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
   const { data: droneImages, isLoading } = useQuery<DroneImage[]>({
     queryKey: ['/api/drone-images'],
   });
-  
-  // Fetch 3D models for all drone images
-  useEffect(() => {
-    if (droneImages && droneImages.length > 0) {
-      droneImages.forEach(async (image) => {
-        try {
-          const response = await fetch(`/api/drone-images/${image.id}/model`);
-          if (response.ok) {
-            const model = await response.json();
-            setDroneModels(prev => ({ ...prev, [image.id]: model }));
-          } else {
-            setDroneModels(prev => ({ ...prev, [image.id]: null }));
-          }
-        } catch {
-          setDroneModels(prev => ({ ...prev, [image.id]: null }));
-        }
-      });
-    }
-  }, [droneImages]);
   
   // Activate/deactivate drone imagery mutation
   const toggleDroneImageMutation = useMutation({
@@ -225,11 +204,6 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
     if (t.droneImageId) cesiumTilesetsByDroneImage[t.droneImageId] = t;
   });
 
-  const handleView3D = (droneImageId: number) => {
-    onClose();
-    navigate(`/drone/${droneImageId}/3d`);
-  };
-
   const handleViewCesium3D = (tilesetId: number) => {
     onClose();
     navigate(`/cesium/${tilesetId}`);
@@ -301,89 +275,12 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
         setTilesetUploadProgress('');
       };
 
-      xhr.timeout = 600000; // 10 minute timeout
+      xhr.timeout = 1800000; // 30 minute timeout for large files
       xhr.send(formData);
     };
     input.click();
   };
 
-  const handleUpload3DModel = (droneImageId: number) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.glb,.gltf,.obj,.ply,.zip,.ZIP';
-    input.onchange = async (e) => {
-      const files = (e.target as HTMLInputElement).files;
-      if (files && files.length > 0) {
-        await upload3DModel(droneImageId, files[0]);
-      }
-    };
-    input.click();
-  };
-
-  const upload3DModel = async (droneImageId: number, file: File) => {
-    setModelUploadingForId(droneImageId);
-    
-    const formData = new FormData();
-    formData.append('droneImageId', droneImageId.toString());
-    formData.append('model', file);
-
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-    const isZip = file.name.toLowerCase().endsWith('.zip');
-    toast({
-      title: "Uploading 3D Model",
-      description: `Uploading ${file.name} (${sizeMB} MB)...${isZip ? ' ZIP will be extracted automatically.' : ''}`,
-    });
-    
-    try {
-      const response = await fetch('/api/admin/drone-models/upload', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const model = await response.json();
-        setDroneModels(prev => ({ ...prev, [droneImageId]: model }));
-        toast({
-          title: "3D Model Uploaded",
-          description: "Your 3D model has been uploaded successfully.",
-        });
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Upload Failed",
-          description: error.message || "Failed to upload 3D model",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: "An error occurred while uploading your 3D model",
-        variant: "destructive",
-      });
-    } finally {
-      setModelUploadingForId(null);
-    }
-  };
-
-  const handleDelete3DModel = async (modelId: number, droneImageId: number) => {
-    try {
-      const response = await apiRequest('DELETE', `/api/admin/drone-models/${modelId}`);
-      setDroneModels(prev => ({ ...prev, [droneImageId]: null }));
-      toast({
-        title: "3D Model Deleted",
-        description: "The 3D model has been deleted successfully.",
-      });
-    } catch (error) {
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete 3D model",
-        variant: "destructive",
-      });
-    }
-  };
-  
   const handleImportDroneMap = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -691,17 +588,6 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
                     </button>
                   )}
                   
-                  {/* View 3D model button */}
-                  {droneModels[image.id] ? (
-                    <button
-                      onClick={() => handleView3D(image.id)}
-                      className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                      data-testid={`view-3d-${image.id}`}
-                    >
-                      3D Model
-                    </button>
-                  ) : null}
-
                   {/* View Cesium 3D Map button or Upload */}
                   {cesiumTilesetsByDroneImage[image.id] ? (
                     <button
@@ -747,43 +633,7 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
             </div>
           )}
           
-          {/* Admin 3D Model Management Section */}
-          {isAdmin && droneImages && droneImages.length > 0 && (
-            <div className="border-t border-white/10 pt-4 mb-4">
-              <h4 className="text-sm font-medium mb-3 text-white/80">3D Model Management</h4>
-              <div className="space-y-2">
-                {droneImages.map((image) => (
-                  <div key={`model-${image.id}`} className="flex items-center justify-between text-sm">
-                    <span className="text-white/60 truncate">{image.name}</span>
-                    <div className="flex items-center gap-2">
-                      {modelUploadingForId === image.id ? (
-                        <span className="text-xs text-purple-400 flex items-center gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Uploading...
-                        </span>
-                      ) : droneModels[image.id] ? (
-                        <button 
-                          className="text-xs text-red-400 hover:text-red-300"
-                          onClick={() => handleDelete3DModel(droneModels[image.id]!.id, image.id)}
-                        >
-                          Delete 3D Model
-                        </button>
-                      ) : (
-                        <button 
-                          className="text-xs text-purple-400 hover:text-purple-300"
-                          onClick={() => handleUpload3DModel(image.id)}
-                        >
-                          Upload 3D Model
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          <Button 
+          <Button
             className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 rounded-xl"
             onClick={onClose}
             data-testid="button-return-to-map"

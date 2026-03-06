@@ -221,7 +221,7 @@ const tilesetMulterStorage = multer.diskStorage({
 
 const tilesetUpload = multer({
   storage: tilesetMulterStorage,
-  limits: { fileSize: 5000 * 1024 * 1024 }, // 5GB max
+  limits: { fileSize: Infinity }, // No size limit for large 3D tilesets
 });
 
 // Helper to validate and parse JSON requests
