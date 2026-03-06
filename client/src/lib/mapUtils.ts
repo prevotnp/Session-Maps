@@ -1219,7 +1219,7 @@ export function addBaseTrailLinesAndLabels(map: mapboxgl.Map): void {
             'text-field': [
               'case',
               ['has', 'elevation_m'],
-              ['concat', '▲ ', ['get', 'name'], '\n', ['to-string', ['round', ['*', ['get', 'elevation_m'], 3.28084]]], ' ft'],
+              ['concat', '▲ ', ['get', 'name'], '\n', ['number-format', ['round', ['*', ['get', 'elevation_m'], 3.28084]], { 'locale': 'en-US', 'max-fraction-digits': 0 }], ' ft'],
               ['concat', '▲ ', ['get', 'name']]
             ],
             'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
