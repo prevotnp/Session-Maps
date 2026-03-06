@@ -58,7 +58,10 @@ const EPSG_DEFINITIONS: Record<number, string> = {
 };
 
 // Configure multer for drone imagery uploads
-const uploadDir = path.join(process.cwd(), 'uploads', 'drone-imagery');
+// Store TIFFs outside the workspace so they don't block deployment
+const uploadDir = process.env.NODE_ENV === 'production' 
+  ? path.join(process.cwd(), 'uploads', 'drone-imagery')
+  : path.join('/home/runner/session-maps-data', 'drone-imagery');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
