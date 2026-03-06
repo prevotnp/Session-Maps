@@ -206,6 +206,7 @@ const MapView: React.FC<MapViewProps> = ({
     setIsMeasurementMode,
     measurementDistance,
     measurementPath,
+    measurementElevations,
     clearMeasurementPath,
     // Offline area selection
     isOfflineSelectionMode,
@@ -1649,7 +1650,7 @@ const MapView: React.FC<MapViewProps> = ({
       {/* Drone Imagery Loading Indicator */}
       {isDroneImageryLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-dark/95 backdrop-blur-md rounded-2xl shadow-2xl border border-green-500/30 px-10 py-8 animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-black/90 backdrop-blur-md rounded-2xl shadow-2xl border border-green-500/30 px-10 py-8 animate-in fade-in duration-300 pointer-events-auto">
             <div className="flex flex-col items-center gap-4">
               <div className="relative w-14 h-14">
                 <div className="absolute inset-0 border-4 border-green-500/20 rounded-full" />
@@ -1686,7 +1687,7 @@ const MapView: React.FC<MapViewProps> = ({
       
       {/* Distance Measurement Panel - Top Center */}
       {isMeasurementMode && (
-        <div 
+        <div
           className="absolute top-24 left-1/2 transform -translate-x-1/2 z-50 bg-dark/95 backdrop-blur-sm rounded-xl shadow-2xl border border-white/20 px-4 py-3 animate-in fade-in duration-300"
           data-testid="measurement-notification"
         >
@@ -1698,6 +1699,20 @@ const MapView: React.FC<MapViewProps> = ({
               <p className="text-lg font-bold text-white">
                 {measurementDistance || 'Tap to add points'}
               </p>
+              {measurementPath.length >= 2 && measurementElevations.length >= 2 && (() => {
+                const firstElev = measurementElevations[0];
+                const lastElev = measurementElevations[measurementElevations.length - 1];
+                if (firstElev !== null && firstElev !== undefined && lastElev !== null && lastElev !== undefined) {
+                  const elevChangeFt = Math.round((lastElev - firstElev) * 3.28084);
+                  const sign = elevChangeFt >= 0 ? '+' : '';
+                  return (
+                    <p className="text-xs text-cyan-400 mt-0.5">
+                      Elev change: {sign}{elevChangeFt} ft
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
             {measurementPath.length > 0 && (
               <button

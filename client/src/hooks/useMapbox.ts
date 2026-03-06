@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DroneImage, MapDrawing } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { escapeHtml } from '@/lib/escapeHtml';
-import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, addTrailGroup, removeTrailGroup, TrailOverlayType, TrailGroupType, TRAIL_OVERLAY_CONFIG, TRAIL_GROUP_CONFIG } from '@/lib/mapUtils';
+import { addUserLocationToMap, UserLocation, DEFAULT_MAP_SETTINGS, addTetonCountyImagery, removeTetonCountyImagery, addTetonCountyParcels, removeTetonCountyParcels, switchToTetonCountyView, MAP_STYLES, switchToEnhancedMapboxSatellite, switchToEsriImagery, addEsriWorldImagery, removeEsriWorldImagery, addTopoContourLines, removeTopoContourLines, addTrailOverlay, removeTrailOverlay, addBaseTrailLinesAndLabels, addTrailGroup, removeTrailGroup, TrailOverlayType, TrailGroupType, TRAIL_OVERLAY_CONFIG, TRAIL_GROUP_CONFIG, getElevation } from '@/lib/mapUtils';
 
 // Set mapbox access token
 const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -66,6 +66,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   
   // Multi-point click measurement state
   const [measurementPath, setMeasurementPath] = useState<mapboxgl.LngLat[]>([]);
+  const [measurementElevations, setMeasurementElevations] = useState<(number | null)[]>([]);
   const measurementPathMarkersRef = useRef<mapboxgl.Marker[]>([]);
   
   // Topo layer pending cleanup ref
@@ -3283,6 +3284,10 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     const handleMeasurementClick = (e: mapboxgl.MapMouseEvent) => {
       const clickedPoint = e.lngLat;
       setMeasurementPath(prev => [...prev, clickedPoint]);
+      // Fetch elevation for the new point
+      getElevation(clickedPoint.lng, clickedPoint.lat).then(elev => {
+        setMeasurementElevations(prev => [...prev, elev]);
+      });
     };
     
     map.on('click', handleMeasurementClick);
@@ -3373,6 +3378,37 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       const el = document.createElement('div');
       el.className = 'measurement-point-marker';
       el.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: none;
+      `;
+
+      // Elevation label above the point
+      const elevLabel = document.createElement('div');
+      elevLabel.className = 'measurement-elev-label';
+      const elev = measurementElevations[index];
+      if (elev !== null && elev !== undefined) {
+        const elevFt = Math.round(elev * 3.28084);
+        elevLabel.textContent = `${elevFt} ft`;
+      } else {
+        elevLabel.textContent = '...';
+      }
+      elevLabel.style.cssText = `
+        background: rgba(0, 0, 0, 0.8);
+        color: #4FC3F7;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        margin-bottom: 2px;
+        white-space: nowrap;
+      `;
+      el.appendChild(elevLabel);
+
+      // Numbered circle
+      const circle = document.createElement('div');
+      circle.style.cssText = `
         width: 24px;
         height: 24px;
         background: #FF6B35;
@@ -3386,12 +3422,13 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         font-weight: bold;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       `;
-      el.textContent = String(index + 1);
-      
-      const marker = new mapboxgl.Marker({ element: el })
+      circle.textContent = String(index + 1);
+      el.appendChild(circle);
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
-      
+
       measurementPathMarkersRef.current.push(marker);
     });
     
@@ -3419,13 +3456,22 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
         z-index: 999;
         white-space: nowrap;
       `;
-      labelEl.textContent = formatDistance(segmentDistances[i]);
-      
+      // Build label text with distance and elevation change
+      let labelText = formatDistance(segmentDistances[i]);
+      const elev1 = measurementElevations[i];
+      const elev2 = measurementElevations[i + 1];
+      if (elev1 !== null && elev1 !== undefined && elev2 !== null && elev2 !== undefined) {
+        const elevChangeFt = Math.round((elev2 - elev1) * 3.28084);
+        const sign = elevChangeFt >= 0 ? '+' : '';
+        labelText += ` | ${sign}${elevChangeFt} ft`;
+      }
+      labelEl.textContent = labelText;
+
       const screenPos = map.project([midLng, midLat]);
       labelEl.style.left = `${screenPos.x}px`;
       labelEl.style.top = `${screenPos.y - 15}px`;
       labelEl.style.transform = 'translate(-50%, -50%)';
-      
+
       map.getContainer().appendChild(labelEl);
     }
     
@@ -3450,7 +3496,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     return () => {
       map.off('move', updateLabels);
     };
-  }, [measurementPath]);
+  }, [measurementPath, measurementElevations]);
 
   // Draw mode state and refs
   const drawModeControlPointsRef = useRef<mapboxgl.Marker[]>([]);
@@ -3894,8 +3940,10 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     setIsMeasurementMode,
     measurementDistance,
     measurementPath,
+    measurementElevations,
     clearMeasurementPath: () => {
       setMeasurementPath([]);
+      setMeasurementElevations([]);
       measurementPathMarkersRef.current.forEach(marker => marker.remove());
       measurementPathMarkersRef.current = [];
       document.querySelectorAll('.measurement-segment-label').forEach(el => el.remove());

@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { PiBirdFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
-import { addUserLocationToMap } from "@/lib/mapUtils";
+import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
 import type { DroneImage } from "@shared/schema";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -185,6 +185,7 @@ export default function LiveSharedMap() {
   // Local measurement state (not shared with other users)
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [measurementPath, setMeasurementPath] = useState<mapboxgl.LngLat[]>([]);
+  const [measurementElevations, setMeasurementElevations] = useState<(number | null)[]>([]);
   const measurementMarkersRef = useRef<mapboxgl.Marker[]>([]);
   
   // Draw route state
@@ -679,6 +680,9 @@ export default function LiveSharedMap() {
         setIsAddingPoi(false);
       } else if (isMeasuring) {
         setMeasurementPath(prev => [...prev, e.lngLat]);
+        getElevation(e.lngLat.lng, e.lngLat.lat).then(elev => {
+          setMeasurementElevations(prev => [...prev, elev]);
+        });
       } else if (isDrawingRoute && !isEditingSharedRoute) {
         setDrawRoutePoints(prev => [...prev, [e.lngLat.lng, e.lngLat.lat]]);
       }
@@ -776,20 +780,59 @@ export default function LiveSharedMap() {
           white-space: nowrap;
           transform: translate(-50%, -50%);
         `;
-        labelEl.textContent = formatDistance(dist);
-        
+        // Build label text with distance and elevation change
+        let labelText = formatDistance(dist);
+        const elev1 = measurementElevations[i - 1];
+        const elev2 = measurementElevations[i];
+        if (elev1 !== null && elev1 !== undefined && elev2 !== null && elev2 !== undefined) {
+          const elevChangeFt = Math.round((elev2 - elev1) * 3.28084);
+          const sign = elevChangeFt >= 0 ? '+' : '';
+          labelText += ` | ${sign}${elevChangeFt} ft`;
+        }
+        labelEl.textContent = labelText;
+
         const screenPos = m.project([midLng, midLat]);
         labelEl.style.left = `${screenPos.x}px`;
         labelEl.style.top = `${screenPos.y - 15}px`;
-        
+
         m.getContainer().appendChild(labelEl);
       }
     }
     
-    // Create numbered markers for each point
+    // Create numbered markers for each point with elevation
     measurementPath.forEach((point, index) => {
       const el = document.createElement('div');
       el.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: none;
+      `;
+
+      // Elevation label above the point
+      const elevLabel = document.createElement('div');
+      const elev = measurementElevations[index];
+      if (elev !== null && elev !== undefined) {
+        const elevFt = Math.round(elev * 3.28084);
+        elevLabel.textContent = `${elevFt} ft`;
+      } else {
+        elevLabel.textContent = '...';
+      }
+      elevLabel.style.cssText = `
+        background: rgba(0, 0, 0, 0.8);
+        color: #4FC3F7;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        margin-bottom: 2px;
+        white-space: nowrap;
+      `;
+      el.appendChild(elevLabel);
+
+      // Numbered circle
+      const circle = document.createElement('div');
+      circle.style.cssText = `
         width: 24px;
         height: 24px;
         background: #FF6B35;
@@ -803,12 +846,13 @@ export default function LiveSharedMap() {
         font-weight: bold;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       `;
-      el.textContent = String(index + 1);
-      
-      const marker = new mapboxgl.Marker({ element: el })
+      circle.textContent = String(index + 1);
+      el.appendChild(circle);
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([point.lng, point.lat])
         .addTo(m);
-      
+
       measurementMarkersRef.current.push(marker);
     });
     
@@ -833,11 +877,12 @@ export default function LiveSharedMap() {
     return () => {
       m.off('move', updateLabels);
     };
-  }, [measurementPath]);
-  
+  }, [measurementPath, measurementElevations]);
+
   // Clear measurement when exiting measurement mode
   const clearMeasurement = useCallback(() => {
     setMeasurementPath([]);
+    setMeasurementElevations([]);
     measurementMarkersRef.current.forEach(marker => marker.remove());
     measurementMarkersRef.current = [];
     document.querySelectorAll('.live-map-measurement-label').forEach(el => el.remove());
@@ -2031,12 +2076,26 @@ export default function LiveSharedMap() {
                     {measurementPath.length === 0 ? 'Tap on map to start' : `${measurementPath.length} point${measurementPath.length !== 1 ? 's' : ''}`}
                   </p>
                   <p className="text-lg font-bold text-white">
-                    {measurementPath.length >= 2 
-                      ? `Total: ${totalMeasurementDistance < 1000 
+                    {measurementPath.length >= 2
+                      ? `Total: ${totalMeasurementDistance < 1000
                           ? `${Math.round(totalMeasurementDistance)}m / ${Math.round(totalMeasurementDistance * 3.28084)}ft`
                           : `${(totalMeasurementDistance / 1000).toFixed(2)}km / ${(totalMeasurementDistance * 0.000621371).toFixed(2)}mi`}`
                       : 'Tap to add points'}
                   </p>
+                  {measurementPath.length >= 2 && measurementElevations.length >= 2 && (() => {
+                    const firstElev = measurementElevations[0];
+                    const lastElev = measurementElevations[measurementElevations.length - 1];
+                    if (firstElev !== null && firstElev !== undefined && lastElev !== null && lastElev !== undefined) {
+                      const elevChangeFt = Math.round((lastElev - firstElev) * 3.28084);
+                      const sign = elevChangeFt >= 0 ? '+' : '';
+                      return (
+                        <p className="text-xs text-cyan-400 mt-0.5">
+                          Elev change: {sign}{elevChangeFt} ft
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
                 {measurementPath.length > 0 && (
                   <Button
