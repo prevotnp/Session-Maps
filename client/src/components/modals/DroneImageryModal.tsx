@@ -250,7 +250,20 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           queryClient.invalidateQueries({ queryKey: ['/api/cesium-tilesets'] });
-          toast({ title: "3D Tileset uploaded", description: "You can now view it in the 3D viewer" });
+          toast({ title: "3D Tileset uploaded", description: "Opening 3D viewer..." });
+          setTilesetUploadingForId(null);
+          setTilesetUploadProgress('');
+          // Parse response to get tileset ID and navigate to viewer
+          try {
+            const tileset = JSON.parse(xhr.responseText);
+            if (tileset?.id) {
+              onClose();
+              navigate(`/cesium/${tileset.id}`);
+              return;
+            }
+          } catch {
+            // If parsing fails, still show success but stay on modal
+          }
         } else {
           try {
             const data = JSON.parse(xhr.responseText);
