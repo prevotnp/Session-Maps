@@ -931,7 +931,7 @@ export default function CesiumViewer() {
         </div>
       )}
 
-      <div className="absolute top-4 left-4 z-40 flex items-center gap-3">
+      <div className="absolute left-4 z-40 flex items-center gap-3" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <Button
           variant="outline"
           size="sm"
@@ -947,7 +947,7 @@ export default function CesiumViewer() {
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 z-40 flex flex-col gap-1.5 items-end">
+      <div className="absolute right-4 z-40 flex flex-col gap-1.5 items-end" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <button
           className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-gray-900/80 border text-white hover:bg-gray-800 transition-colors ${isRouteBuilderOpen ? 'ring-2 ring-green-400 border-green-400' : 'border-white/20'}`}
           onClick={handleOpenRouteBuilder}
@@ -1100,7 +1100,7 @@ export default function CesiumViewer() {
       )}
 
       {isRoutesListOpen && (
-        <div className="absolute left-4 top-20 bottom-20 w-80 z-40 pointer-events-auto bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden flex flex-col">
+        <div className="absolute left-4 bottom-20 w-80 z-40 pointer-events-auto bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden flex flex-col" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 80px)' }}>
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <h3 className="text-white font-semibold flex items-center gap-2">
               <RouteIcon className="w-4 h-4" />
