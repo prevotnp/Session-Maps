@@ -2063,10 +2063,12 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     
     const map = mapRef.current;
     if (map.getLayer(layerId)) {
+      const screenMin = Math.min(window.innerWidth, window.innerHeight);
+      const pad = screenMin < 500 ? 20 : screenMin < 800 ? 50 : 100;
       map.fitBounds([
         [parseFloat(droneImage.southWestLng), parseFloat(droneImage.southWestLat)],
         [parseFloat(droneImage.northEastLng), parseFloat(droneImage.northEastLat)]
-      ], { padding: 100 });
+      ], { padding: pad });
       return;
     }
     
@@ -2195,11 +2197,34 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
     
     setActiveDroneImagery(droneImage);
     setActiveDroneImages(prev => new Map(prev).set(imageId, droneImage));
-    
-    map.fitBounds([
-      [swLng, swLat],
-      [neLng, neLat]
-    ], { padding: 100 });
+
+    // Use adaptive padding — mobile screens need less padding to achieve higher zoom
+    const screenMin = Math.min(window.innerWidth, window.innerHeight);
+    const fitPadding = screenMin < 500 ? 20 : screenMin < 800 ? 50 : 100;
+
+    if (useTiles) {
+      const requiredMinZoom = (droneImage as any).tileMinZoom || 14;
+
+      // Fit bounds first, then ensure zoom is high enough for tiles to render
+      map.fitBounds([
+        [swLng, swLat],
+        [neLng, neLat]
+      ], { padding: fitPadding });
+
+      // After fitBounds animation, check if we need to zoom in more for tiles
+      map.once('moveend', () => {
+        const currentZoom = map.getZoom();
+        if (currentZoom < requiredMinZoom) {
+          console.log(`Zoom ${currentZoom.toFixed(1)} is below tile minZoom ${requiredMinZoom}, zooming in`);
+          map.easeTo({ zoom: requiredMinZoom, duration: 500 });
+        }
+      });
+    } else {
+      map.fitBounds([
+        [swLng, swLat],
+        [neLng, neLat]
+      ], { padding: fitPadding });
+    }
   };
   
   // Remove a specific drone imagery by ID

@@ -78,7 +78,8 @@ export async function generateTilesFromImage(
   const lngSpan = bounds.east - bounds.west;
   const pixelsPerDegLng = imgWidth / lngSpan;
   const maxZoom = Math.min(20, Math.floor(Math.log2(pixelsPerDegLng * 360 / TILE_SIZE)));
-  const minZoom = Math.max(14, maxZoom - 6);
+  // Use zoom 10 as minimum so overlays are visible on mobile (smaller screens zoom out more)
+  const minZoom = Math.max(10, maxZoom - 8);
 
   onProgress?.(10, `Generating tiles at zoom ${minZoom}-${maxZoom}...`);
 

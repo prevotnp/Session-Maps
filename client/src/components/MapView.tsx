@@ -1100,14 +1100,23 @@ const MapView: React.FC<MapViewProps> = ({
   useEffect(() => {
     // Only auto-load once on initial page load, not on subsequent changes
     if (hasAutoLoadedRef.current) {
-      console.log('Skipping auto-load - already loaded once');
       return;
     }
-    
+
     if (!isMapReady || !addDroneImagery) {
       return;
     }
-    
+
+    // Check for image passed via global variable (from Upload page "View on Map" navigation)
+    const globalImage = (window as any).__activatedDroneImage;
+    if (globalImage) {
+      console.log('Loading drone imagery from global handoff:', globalImage.name, 'ID:', globalImage.id);
+      hasAutoLoadedRef.current = true;
+      (window as any).__activatedDroneImage = null; // Clear it
+      addDroneImagery(globalImage);
+      return;
+    }
+
     if (activeDroneImage && !activeDroneImagery) {
       console.log('INITIAL auto-load of active drone imagery:', activeDroneImage.name, 'ID:', activeDroneImage.id);
       hasAutoLoadedRef.current = true;

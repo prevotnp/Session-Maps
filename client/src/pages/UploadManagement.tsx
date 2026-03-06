@@ -298,12 +298,15 @@ export default function UploadManagement() {
 
   // ---- View on Map ----
   const handleViewOnMap = (image: DroneImage) => {
-    // Activate via API then navigate
+    // Mark image as active via API (must send isActive: true in body)
     fetch(`/api/drone-images/${image.id}/toggle-active`, {
       method: 'POST',
       credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: true }),
     }).then(() => {
-      window.dispatchEvent(new CustomEvent('droneImageActivated', { detail: image }));
+      // Store in global so MapView can pick it up after navigation
+      (window as any).__activatedDroneImage = image;
       navigate('/');
     });
   };
