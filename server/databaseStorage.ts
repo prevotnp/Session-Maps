@@ -262,6 +262,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(cesium3dTilesets).where(eq(cesium3dTilesets.userId, userId));
   }
 
+  async getAllCesium3dTilesets(): Promise<Cesium3dTileset[]> {
+    return await db.select().from(cesium3dTilesets);
+  }
+
   async getCesium3dTilesetByDroneImageId(droneImageId: number): Promise<Cesium3dTileset | undefined> {
     const [tileset] = await db.select().from(cesium3dTilesets).where(eq(cesium3dTilesets.droneImageId, droneImageId));
     return tileset;

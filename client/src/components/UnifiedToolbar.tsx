@@ -61,7 +61,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
   const [layersDropdownOpen, setLayersDropdownOpen] = useState(false);
   const layersDropdownRef = useRef<HTMLDivElement>(null);
-  const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
   const [, navigate] = useLocation();
   const droneDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -99,22 +98,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
     queryKey: ['/api/drone-images'],
   });
   
-  useEffect(() => {
-    if (droneImages && droneImages.length > 0) {
-      droneImages.forEach(async (image) => {
-        try {
-          const response = await fetch(`/api/drone-images/${image.id}/model`);
-          if (response.ok) {
-            setDroneModels(prev => ({ ...prev, [image.id]: true }));
-          } else {
-            setDroneModels(prev => ({ ...prev, [image.id]: false }));
-          }
-        } catch {
-          setDroneModels(prev => ({ ...prev, [image.id]: false }));
-        }
-      });
-    }
-  }, [droneImages]);
   
   const { data: pendingInvites = [] } = useQuery<LiveMapInvite[]>({
     queryKey: ['/api/live-map-invites'],
@@ -350,7 +333,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                         <div>
                           {droneImages.map((droneImage, index) => {
                             const displayName = droneImage.name;
-                            const has3DModel = droneModels[droneImage.id];
                             return (
                               <div 
                                 key={droneImage.id} 
@@ -372,16 +354,6 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                                     data-testid={`button-hide-${droneImage.id}`}
                                   >
                                     Hide
-                                  </button>
-                                )}
-                                {has3DModel && (
-                                  <button
-                                    onClick={() => navigate(`/drone/${droneImage.id}/3d`)}
-                                    className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                                    title="Open 3D model viewer"
-                                    data-testid={`button-view-3d-${droneImage.id}`}
-                                  >
-                                    3D Model
                                   </button>
                                 )}
                                 {cesiumTilesetsByDroneImage[droneImage.id] && (
@@ -472,17 +444,19 @@ const UnifiedToolbar: React.FC<UnifiedToolbarProps> = ({
                       )}
                     </div>
 
-                    <button 
-                      className={`layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 transition-all active:scale-95 ${isAIAssistOpen ? 'border-yellow-400 ring-2 ring-yellow-400' : 'border-transparent hover:ring-2 hover:ring-yellow-400/50'}`}
-                      onClick={onOpenAIAssist}
-                      data-testid="button-ai-assist"
-                    >
-                      <Sparkles className={`h-4 w-4 sm:h-5 sm:w-5 ${isAIAssistOpen ? 'text-yellow-400' : 'text-yellow-300'}`} />
-                      <span className="text-[9px] sm:text-[10px] mt-0.5 flex flex-col items-center leading-tight">
-                        <span>AI</span>
-                        <span>Assist</span>
-                      </span>
-                    </button>
+                    {onOpenAIAssist && (
+                      <button
+                        className={`layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 transition-all active:scale-95 ${isAIAssistOpen ? 'border-yellow-400 ring-2 ring-yellow-400' : 'border-transparent hover:ring-2 hover:ring-yellow-400/50'}`}
+                        onClick={onOpenAIAssist}
+                        data-testid="button-ai-assist"
+                      >
+                        <Sparkles className={`h-4 w-4 sm:h-5 sm:w-5 ${isAIAssistOpen ? 'text-yellow-400' : 'text-yellow-300'}`} />
+                        <span className="text-[9px] sm:text-[10px] mt-0.5 flex flex-col items-center leading-tight">
+                          <span>AI</span>
+                          <span>Assist</span>
+                        </span>
+                      </button>
+                    )}
                     
                   </div>
                 </div>

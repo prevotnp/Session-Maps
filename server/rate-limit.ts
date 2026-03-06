@@ -60,7 +60,13 @@ export function setupRateLimiting(app: Express) {
   
   app.use('/api/ai/', aiLimiter);
   
-  app.use('/api/drone-images', uploadLimiter);
+  app.use('/api/drone-images', (req, res, next) => {
+    // Skip rate limiting for tile serving and file viewing (read-only, high-volume)
+    if (req.path.includes('/tiles/') || req.path.includes('/file')) {
+      return next();
+    }
+    return uploadLimiter(req, res, next);
+  });
   app.use('/api/admin/drone-images/upload', uploadLimiter);
   app.use('/api/admin/drone-models/upload', uploadLimiter);
   app.use('/api/cesium-tilesets/upload', uploadLimiter);

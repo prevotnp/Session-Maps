@@ -58,7 +58,10 @@ const EPSG_DEFINITIONS: Record<number, string> = {
 };
 
 // Configure multer for drone imagery uploads
-const uploadDir = path.join(process.cwd(), 'uploads', 'drone-imagery');
+// Store TIFFs outside the workspace so they don't block deployment
+const uploadDir = process.env.NODE_ENV === 'production' 
+  ? path.join(process.cwd(), 'uploads', 'drone-imagery')
+  : path.join('/home/runner/session-maps-data', 'drone-imagery');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -82,7 +85,7 @@ const multerStorage = multer.diskStorage({
 const upload = multer({ 
   storage: multerStorage,
   limits: {
-    fileSize: 5000 * 1024 * 1024, // 5GB limit per file
+    fileSize: Infinity, // No size limit for drone imagery
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.tif', '.tiff', '.jpg', '.jpeg', '.png'];
@@ -109,16 +112,15 @@ const modelMulterStorage = multer.diskStorage({
 const modelUpload = multer({ 
   storage: modelMulterStorage,
   limits: {
-    fileSize: 5000 * 1024 * 1024, // 5GB limit per file
+    fileSize: Infinity,
   },
   fileFilter: (req, file, cb) => {
-    // Allow 3D model files, material files, and texture files
-    const allowedTypes = ['.glb', '.gltf', '.obj', '.ply', '.mtl', '.jpg', '.jpeg', '.png', '.tif', '.tiff'];
+    const allowedTypes = ['.glb', '.gltf', '.obj', '.ply', '.mtl', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.zip', '.json', '.bin', '.b3dm', '.i3dm', '.pnts', '.cmpt'];
     const fileExt = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(fileExt)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Allowed: GLB, GLTF, OBJ, PLY, MTL, and texture images.'));
+      cb(new Error('Invalid file type. Allowed: GLB, GLTF, OBJ, PLY, MTL, texture images, and ZIP archives.'));
     }
   }
 });
@@ -127,7 +129,7 @@ const modelUpload = multer({
 const modelMultiUpload = multer({ 
   storage: modelMulterStorage,
   limits: {
-    fileSize: 5000 * 1024 * 1024, // 5GB limit per file
+    fileSize: Infinity, // No size limit for 3D model files
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.glb', '.gltf', '.obj', '.ply', '.mtl', '.jpg', '.jpeg', '.png', '.tif', '.tiff'];
@@ -222,7 +224,7 @@ const tilesetMulterStorage = multer.diskStorage({
 
 const tilesetUpload = multer({
   storage: tilesetMulterStorage,
-  limits: { fileSize: 2000 * 1024 * 1024 }, // 2GB max
+  limits: { fileSize: Infinity }, // No size limit for large 3D tilesets
 });
 
 // Helper to validate and parse JSON requests
@@ -491,9 +493,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Middleware to extend timeout for large file uploads
   const extendTimeout = (req: Request, res: Response, next: Function) => {
-    // Set 30 minute timeout for large file uploads
-    req.setTimeout(30 * 60 * 1000);
-    res.setTimeout(30 * 60 * 1000);
+    req.setTimeout(2 * 60 * 60 * 1000);
+    res.setTimeout(2 * 60 * 60 * 1000);
     next();
   };
 
@@ -907,7 +908,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ==========================================
   
   // Upload 3D model for a drone image (admin only)
-  app.post("/api/admin/drone-models/upload", isAdmin, modelUpload.single('model'), async (req, res) => {
+  app.post("/api/admin/drone-models/upload", isAdmin, extendTimeout, modelUpload.single('model'), async (req, res) => {
     const user = req.user as any;
     const file = req.file;
     
@@ -923,33 +924,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Drone image ID is required" });
       }
 
-      // Check if drone image exists
       const droneImage = await dbStorage.getDroneImage(parseInt(droneImageId));
       if (!droneImage) {
         fs.unlink(file.path, () => {});
         return res.status(404).json({ message: "Drone image not found" });
       }
 
-      // Check if a model already exists for this drone image
       const existingModel = await dbStorage.getDroneModelByDroneImageId(parseInt(droneImageId));
       if (existingModel) {
         fs.unlink(file.path, () => {});
         return res.status(400).json({ message: "A 3D model already exists for this drone image. Delete it first." });
       }
 
-      const fileExt = path.extname(file.originalname).toLowerCase().replace('.', '');
-      const fileSizeMB = Math.round(file.size / (1024 * 1024));
+      const fileExt = path.extname(file.originalname).toLowerCase();
+      let primaryModelPath = file.path;
+      let modelFileType = fileExt.replace('.', '');
+      let totalSizeBytes = file.size;
 
-      // Calculate center coordinates from drone image cornerCoordinates (WGS84) if not provided
+      if (fileExt === '.zip') {
+        const { execSync } = await import('child_process');
+        const extractDir = path.join(modelUploadDir, `extracted-${Date.now()}`);
+        fs.mkdirSync(extractDir, { recursive: true });
+
+        try {
+          execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 1800000, maxBuffer: 500 * 1024 * 1024 });
+        } catch (unzipErr) {
+          console.error("ZIP extraction error:", unzipErr);
+          fs.rmSync(extractDir, { recursive: true, force: true });
+          fs.unlink(file.path, () => {});
+          return res.status(400).json({ message: "Failed to extract ZIP file. Make sure it's a valid ZIP archive." });
+        }
+
+        fs.unlink(file.path, () => {});
+
+        const getAllFiles = (dir: string): string[] => {
+          const results: string[] = [];
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name.startsWith('.') || entry.name === '__MACOSX') continue;
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              results.push(...getAllFiles(fullPath));
+            } else {
+              results.push(fullPath);
+            }
+          }
+          return results;
+        };
+
+        const allFiles = getAllFiles(extractDir);
+        const modelExtensions = ['.glb', '.gltf', '.obj', '.ply'];
+        const mainModelPath = allFiles.find(f => 
+          modelExtensions.includes(path.extname(f).toLowerCase())
+        );
+
+        if (!mainModelPath) {
+          fs.rmSync(extractDir, { recursive: true, force: true });
+          return res.status(400).json({ 
+            message: "No 3D model file (.glb, .gltf, .obj, .ply) found in the ZIP. Make sure your ZIP contains at least one model file." 
+          });
+        }
+
+        primaryModelPath = mainModelPath;
+        modelFileType = path.extname(mainModelPath).toLowerCase().replace('.', '');
+        totalSizeBytes = allFiles.reduce((sum, f) => {
+          try { return sum + fs.statSync(f).size; } catch { return sum; }
+        }, 0);
+
+        console.log(`ZIP extracted: ${allFiles.length} files, main model: ${path.basename(mainModelPath)} (${modelFileType})`);
+      }
+
+      const totalSizeMB = Math.round(totalSizeBytes / (1024 * 1024));
+
       let calculatedCenterLat = centerLat;
       let calculatedCenterLng = centerLng;
       
       if (!calculatedCenterLat || !calculatedCenterLng) {
-        // Use cornerCoordinates if available (these are proper WGS84 lat/lng)
         if (droneImage.cornerCoordinates && Array.isArray(droneImage.cornerCoordinates)) {
           const corners = droneImage.cornerCoordinates as [number, number][];
           if (corners.length >= 4) {
-            // Calculate center from all 4 corners
             const avgLng = corners.reduce((sum, c) => sum + c[0], 0) / corners.length;
             const avgLat = corners.reduce((sum, c) => sum + c[1], 0) / corners.length;
             calculatedCenterLat = calculatedCenterLat || avgLat.toString();
@@ -957,19 +1009,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Fallback to bounding box fields only if they look like valid WGS84 coordinates
         if (!calculatedCenterLat || !calculatedCenterLng) {
           const neLat = parseFloat(droneImage.northEastLat);
           const swLat = parseFloat(droneImage.southWestLat);
           const neLng = parseFloat(droneImage.northEastLng);
           const swLng = parseFloat(droneImage.southWestLng);
           
-          // Check if values look like valid WGS84 (lat: -90 to 90, lng: -180 to 180)
           if (Math.abs(neLat) <= 90 && Math.abs(swLat) <= 90 && Math.abs(neLng) <= 180 && Math.abs(swLng) <= 180) {
             calculatedCenterLat = calculatedCenterLat || ((neLat + swLat) / 2).toString();
             calculatedCenterLng = calculatedCenterLng || ((neLng + swLng) / 2).toString();
           } else {
-            // Default to a safe fallback if coordinates are invalid
             calculatedCenterLat = calculatedCenterLat || "0";
             calculatedCenterLng = calculatedCenterLng || "0";
           }
@@ -979,9 +1028,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const modelData = {
         droneImageId: parseInt(droneImageId),
         name: name || `3D Model - ${droneImage.name}`,
-        filePath: file.path,
-        fileType: fileExt,
-        sizeInMB: fileSizeMB,
+        filePath: primaryModelPath,
+        fileType: modelFileType,
+        sizeInMB: totalSizeMB,
         centerLat: calculatedCenterLat,
         centerLng: calculatedCenterLng,
         altitude: altitude || null,
@@ -992,9 +1041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       return res.status(201).json(newModel);
     } catch (error) {
-      if (file) {
-        fs.unlink(file.path, () => {});
-      }
+      if (file) fs.unlink(file.path, () => {});
       console.error("3D model upload error:", error);
       return res.status(500).json({ message: "Error uploading 3D model" });
     }
@@ -1109,10 +1156,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve 3D model files
-  app.get("/api/drone-models/:filename", async (req, res) => {
-    const filePath = safePath(modelUploadDir, req.params.filename);
-    if (!filePath) {
+  // Serve 3D model files (supports nested paths for extracted ZIPs)
+  app.get("/api/drone-models/*", async (req, res) => {
+    const requestedPath = req.params[0];
+    if (!requestedPath) {
+      return res.status(400).json({ message: "Invalid filename" });
+    }
+    const filePath = path.resolve(path.join(modelUploadDir, requestedPath));
+    if (!filePath.startsWith(path.resolve(modelUploadDir))) {
       return res.status(400).json({ message: "Invalid filename" });
     }
     
@@ -1136,6 +1187,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json(tilesets);
     } catch (error) {
       console.error("Error fetching tilesets:", error);
+      return res.status(500).json({ message: "Error fetching tilesets" });
+    }
+  });
+
+  app.get("/api/admin/cesium-tilesets", isAdmin, async (req, res) => {
+    try {
+      const tilesets = await dbStorage.getAllCesium3dTilesets();
+      return res.json(tilesets);
+    } catch (error) {
+      console.error("Error fetching all tilesets:", error);
       return res.status(500).json({ message: "Error fetching tilesets" });
     }
   });
@@ -1180,28 +1241,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const extractDir = path.join(tilesetUploadDir, `extract-${Date.now()}`);
       fs.mkdirSync(extractDir, { recursive: true });
 
-      const AdmZip = (await import('adm-zip')).default;
-      const zip = new AdmZip(file.path);
-      
-      // Safely extract zip entries (prevent Zip Slip)
-      const entries = zip.getEntries();
-      for (const entry of entries) {
-        const entryPath = path.join(extractDir, entry.entryName);
-        const resolvedPath = path.resolve(entryPath);
-        
-        // Ensure the resolved path is within extractDir (prevent path traversal)
-        if (!resolvedPath.startsWith(path.resolve(extractDir) + path.sep) && resolvedPath !== path.resolve(extractDir)) {
-          // Skip malicious entries
-          console.warn(`Skipping suspicious zip entry: ${entry.entryName}`);
-          continue;
-        }
-        
-        if (entry.isDirectory) {
-          fs.mkdirSync(resolvedPath, { recursive: true });
-        } else {
-          fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
-          fs.writeFileSync(resolvedPath, entry.getData());
-        }
+      const { execSync } = await import('child_process');
+      try {
+        execSync(`unzip -o "${file.path}" -d "${extractDir}"`, { timeout: 1800000, maxBuffer: 500 * 1024 * 1024 });
+      } catch (unzipErr) {
+        console.error("Cesium tileset ZIP extraction error:", unzipErr);
+        fs.rmSync(extractDir, { recursive: true, force: true });
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ message: "Failed to extract ZIP file. Make sure it's a valid ZIP archive." });
       }
 
       let tilesetJsonPath = '';
@@ -1260,45 +1307,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const tilesetRootDir = path.dirname(tilesetJsonPath);
 
-      const tilesetRecord = await dbStorage.createCesium3dTileset({
-        droneImageId: droneImageId ? parseInt(droneImageId) : null,
-        name,
-        storagePath: '',
-        tilesetJsonUrl: '',
-        sizeInMB: fileSizeMB,
-        centerLat,
-        centerLng,
-        centerAlt: centerAlt || null,
-        boundingVolume: null,
-        userId: user.id,
-      });
-
-      const storagePath = `public/cesium-tilesets/${tilesetRecord.id}`;
-
-      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-      if (!bucketId) {
-        return res.status(500).json({ message: "Object storage not configured" });
-      }
-      
-      const { objectStorageClient } = await import('./replit_integrations/object_storage');
-      const bucket = objectStorageClient.bucket(bucketId);
-
-      const uploadDir = async (dirPath: string, prefix: string) => {
-        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          if (entry.isDirectory()) {
-            await uploadDir(fullPath, `${prefix}/${entry.name}`);
-          } else {
-            const objectPath = `${prefix}/${entry.name}`;
-            const fileBuffer = fs.readFileSync(fullPath);
-            await bucket.file(objectPath).save(fileBuffer);
-          }
-        }
-      };
-
-      await uploadDir(tilesetRootDir, storagePath);
-
       let boundingVolume = null;
       try {
         const tilesetJson = JSON.parse(fs.readFileSync(tilesetJsonPath, 'utf-8'));
@@ -1309,6 +1317,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error parsing tileset.json:", e);
       }
 
+      const tilesetRecord = await dbStorage.createCesium3dTileset({
+        droneImageId: droneImageId ? parseInt(droneImageId) : null,
+        name,
+        storagePath: `local:${tilesetRootDir}`,
+        tilesetJsonUrl: '',
+        sizeInMB: fileSizeMB,
+        centerLat,
+        centerLng,
+        centerAlt: centerAlt || null,
+        boundingVolume,
+        userId: user.id,
+      });
+
       const tilesetJsonFilename = path.basename(tilesetJsonPath);
       const tilesetJsonUrl = `/api/cesium-tilesets/${tilesetRecord.id}/tiles/${tilesetJsonFilename}`;
 
@@ -1316,17 +1337,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { cesium3dTilesets } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       await db.update(cesium3dTilesets)
-        .set({ 
-          storagePath, 
-          tilesetJsonUrl,
-          boundingVolume 
-        })
+        .set({ tilesetJsonUrl })
         .where(eq(cesium3dTilesets.id, tilesetRecord.id));
 
-      fs.rmSync(extractDir, { recursive: true, force: true });
       fs.unlinkSync(file.path);
 
       const updatedTileset = await dbStorage.getCesium3dTileset(tilesetRecord.id);
+      console.log(`Cesium tileset ${tilesetRecord.id} stored locally at ${tilesetRootDir} with ${allFiles.length} files`);
+
+      import('./cesiumStorageSync').then(({ syncTilesetToObjectStorage }) => {
+        syncTilesetToObjectStorage(tilesetRecord.id, tilesetRootDir).catch(err => {
+          console.error(`[CesiumSync] Background sync failed for tileset ${tilesetRecord.id}:`, err);
+        });
+      });
+
       return res.status(201).json(updatedTileset);
     } catch (error) {
       if (file && fs.existsSync(file.path)) {
@@ -1342,23 +1366,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tilesetId = parseId(req.params.id);
       const tilePath = (req.params as Record<string, string>)[0];
       
-      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-      if (!bucketId) {
-        return res.status(500).json({ message: "Object storage not configured" });
-      }
-
-      const { objectStorageClient } = await import('./replit_integrations/object_storage');
-      const bucket = objectStorageClient.bucket(bucketId);
-      const objectPath = `public/cesium-tilesets/${tilesetId}/${tilePath}`;
-      const file = bucket.file(objectPath);
-
-      const [exists] = await file.exists();
-      if (!exists) {
-        return res.status(404).json({ message: "Tile not found" });
-      }
-
-      const [buffer] = await file.download();
-      
       const ext = path.extname(tilePath).toLowerCase();
       const contentTypes: Record<string, string> = {
         '.json': 'application/json',
@@ -1371,7 +1378,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         '.png': 'image/png',
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
+        '.subtree': 'application/octet-stream',
+        '.bin': 'application/octet-stream',
       };
+
+      const tileset = await dbStorage.getCesium3dTileset(tilesetId);
+      if (!tileset) {
+        return res.status(404).json({ message: "Tileset not found" });
+      }
+
+      if (tileset.storagePath && tileset.storagePath.startsWith('local:')) {
+        const localDir = tileset.storagePath.replace('local:', '');
+        const localFile = path.resolve(path.join(localDir, tilePath));
+        if (localFile.startsWith(path.resolve(localDir)) && fs.existsSync(localFile)) {
+          res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
+          res.set('Access-Control-Allow-Origin', '*');
+          return res.sendFile(localFile);
+        }
+      }
+
+      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+      if (!bucketId) {
+        return res.status(500).json({ message: "Object storage not configured" });
+      }
+
+      const { objectStorageClient } = await import('./replit_integrations/object_storage');
+      const bucket = objectStorageClient.bucket(bucketId);
+      const objectPath = tileset.storagePath && !tileset.storagePath.startsWith('local:')
+        ? `${tileset.storagePath}/${tilePath}`
+        : `public/cesium-tilesets/${tilesetId}/${tilePath}`;
+      const file = bucket.file(objectPath);
+
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ message: "Tile not found" });
+      }
+
+      const [buffer] = await file.download();
       
       res.set('Content-Type', contentTypes[ext] || 'application/octet-stream');
       res.set('Access-Control-Allow-Origin', '*');
@@ -1404,6 +1447,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({ message: "Tileset deleted" });
     } catch (error) {
       return res.status(500).json({ message: "Error deleting tileset" });
+    }
+  });
+
+  app.post("/api/cesium-tilesets/:id/sync", isAdmin, async (req, res) => {
+    try {
+      const tilesetId = parseId(req.params.id);
+      const tileset = await dbStorage.getCesium3dTileset(tilesetId);
+      if (!tileset) return res.status(404).json({ message: "Tileset not found" });
+      if (!tileset.storagePath || !tileset.storagePath.startsWith('local:')) {
+        return res.json({ message: "Tileset already synced to Object Storage", storagePath: tileset.storagePath });
+      }
+      const localDir = tileset.storagePath.replace('local:', '');
+      if (!fs.existsSync(localDir)) {
+        return res.status(400).json({ message: "Local directory not found" });
+      }
+      const { syncTilesetToObjectStorage } = await import('./cesiumStorageSync');
+      syncTilesetToObjectStorage(tilesetId, localDir).catch(err => {
+        console.error(`[CesiumSync] Sync failed for tileset ${tilesetId}:`, err);
+      });
+      return res.json({ message: "Sync started in background", tilesetId });
+    } catch (error) {
+      return res.status(500).json({ message: "Error starting sync" });
     }
   });
 
@@ -2938,8 +3003,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         coordinates: pathCoordinates,
         distance: summary.distance,
         duration: summary.duration,
-        elevationGain: Math.round(elevationGain),
-        elevationLoss: Math.round(elevationLoss),
+        elevationGain: Math.round(elevationGain * 10) / 10,
+        elevationLoss: Math.round(elevationLoss * 10) / 10,
         source: 'openrouteservice'
       });
 
@@ -3053,8 +3118,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         coordinates: pathCoordinates,
         distance: summary.distance,
         duration: summary.duration,
-        elevationGain: Math.round(elevationGain),
-        elevationLoss: Math.round(elevationLoss),
+        elevationGain: Math.round(elevationGain * 10) / 10,
+        elevationLoss: Math.round(elevationLoss * 10) / 10,
         profile,
         source: 'openrouteservice'
       });
@@ -5515,6 +5580,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Elevation proxy error:', error);
       res.status(500).json({ error: "Failed to fetch elevation data" });
+    }
+  });
+
+  // Batch elevation lookup using Open-Meteo DEM data (much more accurate than Mapbox contour tilequery)
+  app.post("/api/proxy/elevation/batch", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { coordinates } = req.body;
+      if (!Array.isArray(coordinates) || coordinates.length === 0) {
+        return res.status(400).json({ error: "Missing or empty coordinates array" });
+      }
+
+      // Open-Meteo supports up to 100 points per request
+      const maxPerRequest = 100;
+      const allElevations: number[] = [];
+
+      for (let i = 0; i < coordinates.length; i += maxPerRequest) {
+        const batch = coordinates.slice(i, i + maxPerRequest);
+        const latitudes = batch.map((c: [number, number]) => c[1].toFixed(6)).join(',');
+        const longitudes = batch.map((c: [number, number]) => c[0].toFixed(6)).join(',');
+
+        const response = await fetch(
+          `https://api.open-meteo.com/v1/elevation?latitude=${latitudes}&longitude=${longitudes}`
+        );
+
+        if (!response.ok) {
+          return res.status(502).json({ error: `Open-Meteo API error: ${response.status}` });
+        }
+
+        const data = await response.json();
+        allElevations.push(...(data.elevation || []));
+      }
+
+      res.json({ elevation: allElevations });
+    } catch (error) {
+      console.error('Batch elevation proxy error:', error);
+      res.status(500).json({ error: "Failed to fetch batch elevation data" });
     }
   });
 
