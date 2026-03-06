@@ -121,7 +121,7 @@ export default function CesiumViewer() {
     queryKey: ['/api/cesium-tilesets', tilesetId],
     queryFn: async () => {
       const res = await fetch(`/api/cesium-tilesets/${tilesetId}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load tileset');
+      if (!res.ok) throw new Error('Failed to load 3D map');
       return res.json();
     },
     enabled: !!tilesetId
@@ -887,7 +887,7 @@ export default function CesiumViewer() {
   if (isFetching) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white text-lg">Loading 3D tileset info...</div>
+        <div className="text-white text-lg">Loading 3D map info...</div>
       </div>
     );
   }
@@ -896,7 +896,7 @@ export default function CesiumViewer() {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-900">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">3D tileset not found</p>
+          <p className="text-red-400 text-lg mb-4">3D map not found</p>
           <Button onClick={() => setLocation("/")} variant="outline">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Go Back
@@ -943,7 +943,7 @@ export default function CesiumViewer() {
         </Button>
         <div className="bg-gray-900/80 border border-white/20 rounded-md px-3 py-1.5">
           <h2 className="text-white text-sm font-medium">{tileset.name}</h2>
-          <p className="text-white/50 text-xs">3D Tileset</p>
+          <p className="text-white/50 text-xs">3D Map</p>
         </div>
       </div>
 

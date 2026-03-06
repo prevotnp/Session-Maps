@@ -481,7 +481,7 @@ export default function UploadManagement() {
                 <Cloud className="w-5 h-5 text-cyan-400" />
                 3D Maps
               </h2>
-              <p className="text-white/50 text-sm mt-1">Cesium tilesets (.zip with .glb/.json)</p>
+              <p className="text-white/50 text-sm mt-1">3D map files (.zip with .glb/.json)</p>
             </div>
             <Button
               onClick={handle3DUploadSelect}
@@ -607,7 +607,7 @@ export default function UploadManagement() {
           <DialogHeader>
             <DialogTitle>Upload 3D Map</DialogTitle>
             <DialogDescription className="text-white/50">
-              Name your 3D map tileset. File: {pending3DFile?.name}
+              Name your 3D map. File: {pending3DFile?.name}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -637,7 +637,7 @@ export default function UploadManagement() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete 2D Map</AlertDialogTitle>
             <AlertDialogDescription className="text-white/50">
-              This will permanently delete this drone imagery and all associated tiles. This action cannot be undone.
+              This will permanently delete this drone imagery and all associated files. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -658,7 +658,7 @@ export default function UploadManagement() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete 3D Map</AlertDialogTitle>
             <AlertDialogDescription className="text-white/50">
-              This will permanently delete this 3D tileset and all associated files from cloud storage. This action cannot be undone.
+              This will permanently delete this 3D map and all associated files from cloud storage. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

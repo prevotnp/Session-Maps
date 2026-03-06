@@ -224,7 +224,7 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
 
       const formData = new FormData();
       formData.append('tileset', selectedFile);
-      formData.append('name', `${droneImage.name} - 3D Tileset`);
+      formData.append('name', `${droneImage.name} - 3D Map`);
       formData.append('droneImageId', String(droneImage.id));
 
       const centerLat = ((parseFloat(droneImage.northEastLat) + parseFloat(droneImage.southWestLat)) / 2).toString();
@@ -250,7 +250,7 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           queryClient.invalidateQueries({ queryKey: ['/api/cesium-tilesets'] });
-          toast({ title: "3D Tileset uploaded", description: "Opening 3D viewer..." });
+          toast({ title: "3D map uploaded", description: "Opening 3D viewer..." });
           setTilesetUploadingForId(null);
           setTilesetUploadProgress('');
           // Parse response to get tileset ID and navigate to viewer
