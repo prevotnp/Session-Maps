@@ -490,9 +490,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Middleware to extend timeout for large file uploads
   const extendTimeout = (req: Request, res: Response, next: Function) => {
-    // Set 30 minute timeout for large file uploads
-    req.setTimeout(30 * 60 * 1000);
-    res.setTimeout(30 * 60 * 1000);
+    req.setTimeout(2 * 60 * 60 * 1000);
+    res.setTimeout(2 * 60 * 60 * 1000);
     next();
   };
 
