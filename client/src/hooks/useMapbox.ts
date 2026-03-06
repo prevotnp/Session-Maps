@@ -34,8 +34,8 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
   const [activeLayers, setActiveLayers] = useState<string[]>(['esri-hd']);
   const [activeTrailOverlays, setActiveTrailOverlays] = useState<Set<TrailOverlayType>>(new Set<TrailOverlayType>(['hiking', 'riding']));
   const [isTerrain3D, setIsTerrain3D] = useState(false);
-  const [showOutdoorPOIs, setShowOutdoorPOIs] = useState(false);
-  const [esriImageryEnabled, setEsriImageryEnabled] = useState(true);
+  const [showOutdoorPOIs, setShowOutdoorPOIs] = useState(true);
+  const [esriImageryEnabled, setEsriImageryEnabled] = useState(false);
   const [isTrailInfoLoading, setIsTrailInfoLoading] = useState(false);
   const [activeDroneImagery, setActiveDroneImagery] = useState<DroneImage | null>(null);
   const [activeDroneImages, setActiveDroneImages] = useState<Map<number, DroneImage>>(new Map());
