@@ -134,11 +134,12 @@ export function registerDroneRoutes(app: Express) {
       }
 
       // Create drone image record with GDAL-extracted coordinates
+      const isPublicValue = req.body.isPublic === 'false' ? false : true;
       const droneImageData = {
         name: name || `Drone Imagery ${new Date().toLocaleDateString()}`,
         description: description || null,
         password: null,
-        isPublic: true,
+        isPublic: isPublicValue,
         northEastLat: extractedCoords.northEastLat,
         northEastLng: extractedCoords.northEastLng,
         southWestLat: extractedCoords.southWestLat,
@@ -167,27 +168,37 @@ export function registerDroneRoutes(app: Express) {
         west: parseFloat(extractedCoords.southWestLng)
       };
 
-      try {
-        await dbStorage.updateDroneImage(newDroneImage.id, { processingStatus: 'generating_tiles' });
+      // Run tile generation in background with full error protection
+      // Response already sent above - any errors here must not crash the process
+      (async () => {
+        try {
+          await dbStorage.updateDroneImage(newDroneImage.id, { processingStatus: 'generating_tiles' });
 
-        const tileResult = await generateTilesFromImage(
-          filePath,
-          bounds,
-          newDroneImage.id,
-          () => {}
-        );
+          const tileResult = await generateTilesFromImage(
+            filePath,
+            bounds,
+            newDroneImage.id,
+            () => {}
+          );
 
-        await dbStorage.updateDroneImage(newDroneImage.id, {
-          hasTiles: true,
-          tileMinZoom: tileResult.minZoom,
-          tileMaxZoom: tileResult.maxZoom,
-          tileStoragePath: tileResult.storagePath,
-          processingStatus: 'complete'
-        });
-      } catch (tileError) {
-        console.error(`Tile generation failed for image ${newDroneImage.id}:`, tileError);
-        await dbStorage.updateDroneImage(newDroneImage.id, { processingStatus: 'failed' });
-      }
+          await dbStorage.updateDroneImage(newDroneImage.id, {
+            hasTiles: true,
+            tileMinZoom: tileResult.minZoom,
+            tileMaxZoom: tileResult.maxZoom,
+            tileStoragePath: tileResult.storagePath,
+            processingStatus: 'complete'
+          });
+        } catch (tileError) {
+          console.error(`Tile generation failed for image ${newDroneImage.id}:`, tileError);
+          try {
+            await dbStorage.updateDroneImage(newDroneImage.id, { processingStatus: 'failed' });
+          } catch (updateError) {
+            console.error(`Failed to update processing status for image ${newDroneImage.id}:`, updateError);
+          }
+        }
+      })().catch(err => {
+        console.error(`Unhandled error in background tile generation for image ${newDroneImage.id}:`, err);
+      });
 
       return;
     } catch (error) {
