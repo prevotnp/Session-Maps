@@ -42,6 +42,7 @@ import mapboxgl from "mapbox-gl";
 import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
 import { isNative } from "@/lib/capacitor";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/lib/backgroundLocation";
+import { startKeepAlive, stopKeepAlive } from "@/lib/silentAudioKeepAlive";
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 // Color palette for different users in live map sessions
@@ -1291,6 +1292,7 @@ export default function LiveSharedMap() {
         wsRef.current = null;
       }
       stopBackgroundTracking();
+      stopKeepAlive();
     };
   }, [sessionId, user]);
   
@@ -1531,7 +1533,11 @@ export default function LiveSharedMap() {
     };
   }, [user?.id]);
   
+  const isMobilePwa = !isNative && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
   const handleLiveMapResume = useCallback(() => {
+    stopKeepAlive();
+
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.log('Live Map: Reconnecting WebSocket after background...');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1613,9 +1619,16 @@ export default function LiveSharedMap() {
     console.log('Live Map: Fully resumed after background');
   }, [user, sessionId, updateMemberMarker, queryClient]);
 
+  const handleBackgroundEnter = useCallback(() => {
+    if (isMobilePwa) {
+      startKeepAlive();
+    }
+  }, [isMobilePwa]);
+
   useBackgroundResilience({
     isActive: !!sessionId && !!user,
     onForegroundResume: handleLiveMapResume,
+    onBackgroundEnter: handleBackgroundEnter,
     label: 'LiveTeamMap',
   });
   
