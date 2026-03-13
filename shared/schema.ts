@@ -704,6 +704,67 @@ export const insertLiveMapGpsTrackSchema = createInsertSchema(liveMapGpsTracks).
   totalDistance: z.union([z.string(), z.number()]).transform(val => String(val)).optional().nullable(),
 });
 
+// ============================================
+// Enterprise System
+// ============================================
+
+// Enterprise organizations (businesses that get private maps)
+export const enterprises = pgTable("enterprises", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  logoUrl: text("logo_url"),
+  isActive: boolean("is_active").default(true),
+  maxMembers: integer("max_members").default(50),
+  createdBy: integer("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Enterprise members — links users to enterprises with roles
+export const enterpriseMembers = pgTable("enterprise_members", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").notNull().references(() => enterprises.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: text("role").notNull().default("member"),
+  invitedBy: integer("invited_by").references(() => users.id),
+  status: text("status").notNull().default("pending"),
+  joinedAt: timestamp("joined_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Enterprise drone images — junction table linking drone images to enterprises
+export const enterpriseDroneImages = pgTable("enterprise_drone_images", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").notNull().references(() => enterprises.id, { onDelete: 'cascade' }),
+  droneImageId: integer("drone_image_id").notNull().references(() => droneImages.id, { onDelete: 'cascade' }),
+  addedBy: integer("added_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Enterprise Cesium 3D tilesets — junction table linking tilesets to enterprises
+export const enterpriseCesiumTilesets = pgTable("enterprise_cesium_tilesets", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").notNull().references(() => enterprises.id, { onDelete: 'cascade' }),
+  cesiumTilesetId: integer("cesium_tileset_id").notNull().references(() => cesium3dTilesets.id, { onDelete: 'cascade' }),
+  addedBy: integer("added_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Enterprise invites — invite codes for joining
+export const enterpriseInvites = pgTable("enterprise_invites", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").notNull().references(() => enterprises.id, { onDelete: 'cascade' }),
+  inviteCode: text("invite_code").notNull().unique(),
+  createdBy: integer("created_by").notNull().references(() => users.id),
+  maxUses: integer("max_uses").default(50),
+  usedCount: integer("used_count").default(0),
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Device tokens for push notifications
 export const deviceTokens = pgTable("device_tokens", {
   id: serial("id").primaryKey(),
@@ -836,3 +897,54 @@ export const resetPasswordSchema = z.object({
   path: ["confirmPassword"],
 });
 export type ResetPasswordData = z.infer<typeof resetPasswordSchema>;
+
+// Enterprise insert schemas
+export const insertEnterpriseSchema = createInsertSchema(enterprises).pick({
+  name: true,
+  slug: true,
+  description: true,
+  logoUrl: true,
+  isActive: true,
+  maxMembers: true,
+  createdBy: true,
+});
+
+export const insertEnterpriseMemberSchema = createInsertSchema(enterpriseMembers).pick({
+  enterpriseId: true,
+  userId: true,
+  role: true,
+  invitedBy: true,
+  status: true,
+});
+
+export const insertEnterpriseDroneImageSchema = createInsertSchema(enterpriseDroneImages).pick({
+  enterpriseId: true,
+  droneImageId: true,
+  addedBy: true,
+});
+
+export const insertEnterpriseCesiumTilesetSchema = createInsertSchema(enterpriseCesiumTilesets).pick({
+  enterpriseId: true,
+  cesiumTilesetId: true,
+  addedBy: true,
+});
+
+export const insertEnterpriseInviteSchema = createInsertSchema(enterpriseInvites).pick({
+  enterpriseId: true,
+  inviteCode: true,
+  createdBy: true,
+  maxUses: true,
+  expiresAt: true,
+});
+
+// Enterprise types
+export type Enterprise = typeof enterprises.$inferSelect;
+export type InsertEnterprise = z.infer<typeof insertEnterpriseSchema>;
+export type EnterpriseMember = typeof enterpriseMembers.$inferSelect;
+export type InsertEnterpriseMember = z.infer<typeof insertEnterpriseMemberSchema>;
+export type EnterpriseDroneImage = typeof enterpriseDroneImages.$inferSelect;
+export type InsertEnterpriseDroneImage = z.infer<typeof insertEnterpriseDroneImageSchema>;
+export type EnterpriseCesiumTileset = typeof enterpriseCesiumTilesets.$inferSelect;
+export type InsertEnterpriseCesiumTileset = z.infer<typeof insertEnterpriseCesiumTilesetSchema>;
+export type EnterpriseInvite = typeof enterpriseInvites.$inferSelect;
+export type InsertEnterpriseInvite = z.infer<typeof insertEnterpriseInviteSchema>;

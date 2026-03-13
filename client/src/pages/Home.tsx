@@ -7,6 +7,7 @@ import LayerManagerModal from '@/components/modals/LayerManagerModal';
 import RoutesModal from '@/components/modals/RoutesModal';
 import { FriendsModal } from '@/components/modals/FriendsModal';
 import { FriendProfileModal } from '@/components/modals/FriendProfileModal';
+import EnterpriseSelector from '@/components/EnterpriseSelector';
 import { useLocation, useSearch } from 'wouter';
 import { Route, DroneImage } from '@shared/schema';
 
@@ -20,6 +21,7 @@ const Home: React.FC = () => {
   const [isRoutesModalOpen, setIsRoutesModalOpen] = useState(false);
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
   const [isFriendProfileModalOpen, setIsFriendProfileModalOpen] = useState(false);
+  const [isEnterpriseSelectorOpen, setIsEnterpriseSelectorOpen] = useState(false);
   const [selectedFriendUsername, setSelectedFriendUsername] = useState<string>('');
   
   // Selected route for display
@@ -74,6 +76,9 @@ const Home: React.FC = () => {
         break;
       case 'friends':
         setIsFriendsModalOpen(true);
+        break;
+      case 'enterprise':
+        setIsEnterpriseSelectorOpen(true);
         break;
       case 'profile':
         setLocation('/profile');
@@ -131,13 +136,22 @@ const Home: React.FC = () => {
         onViewProfile={handleViewProfile}
       />
 
-      <FriendProfileModal 
-        isOpen={isFriendProfileModalOpen} 
+      <FriendProfileModal
+        isOpen={isFriendProfileModalOpen}
         onClose={() => setIsFriendProfileModalOpen(false)}
         username={selectedFriendUsername}
         onViewRoute={setSelectedRoute}
       />
-      
+
+      {isEnterpriseSelectorOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsEnterpriseSelectorOpen(false)} />
+          <div className="relative bg-slate-900 border border-white/10 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] overflow-hidden">
+            <EnterpriseSelector onClose={() => setIsEnterpriseSelectorOpen(false)} />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

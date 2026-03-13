@@ -92,6 +92,21 @@ import {
   type InsertDirectMessage,
   type Cesium3dTileset,
   type InsertCesium3dTileset,
+  enterprises,
+  enterpriseMembers,
+  enterpriseDroneImages,
+  enterpriseCesiumTilesets,
+  enterpriseInvites,
+  type Enterprise,
+  type InsertEnterprise,
+  type EnterpriseMember,
+  type InsertEnterpriseMember,
+  type EnterpriseDroneImage,
+  type InsertEnterpriseDroneImage,
+  type EnterpriseCesiumTileset,
+  type InsertEnterpriseCesiumTileset,
+  type EnterpriseInvite,
+  type InsertEnterpriseInvite,
 } from "@shared/schema";
 import { IStorage } from "./storage";
 
@@ -1792,5 +1807,162 @@ export class DatabaseStorage implements IStorage {
           eq(backgroundLocationTokens.sessionId, sessionId)
         )
       );
+  }
+
+  // === Enterprise operations ===
+
+  async createEnterprise(enterprise: InsertEnterprise): Promise<Enterprise> {
+    const [created] = await db.insert(enterprises).values(enterprise).returning();
+    return created;
+  }
+
+  async getEnterprise(id: number): Promise<Enterprise | undefined> {
+    const [enterprise] = await db.select().from(enterprises).where(eq(enterprises.id, id));
+    return enterprise;
+  }
+
+  async getEnterpriseBySlug(slug: string): Promise<Enterprise | undefined> {
+    const [enterprise] = await db.select().from(enterprises).where(eq(enterprises.slug, slug));
+    return enterprise;
+  }
+
+  async getAllEnterprises(): Promise<Enterprise[]> {
+    return await db.select().from(enterprises).orderBy(enterprises.name);
+  }
+
+  async updateEnterprise(id: number, data: Partial<Enterprise>): Promise<Enterprise | undefined> {
+    const [updated] = await db.update(enterprises).set({ ...data, updatedAt: new Date() }).where(eq(enterprises.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEnterprise(id: number): Promise<boolean> {
+    const result = await db.delete(enterprises).where(eq(enterprises.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // === Enterprise member operations ===
+
+  async addEnterpriseMember(member: InsertEnterpriseMember): Promise<EnterpriseMember> {
+    const [created] = await db.insert(enterpriseMembers).values(member).returning();
+    return created;
+  }
+
+  async getEnterpriseMembers(enterpriseId: number): Promise<(EnterpriseMember & { user: User })[]> {
+    const results = await db
+      .select({ member: enterpriseMembers, user: users })
+      .from(enterpriseMembers)
+      .innerJoin(users, eq(enterpriseMembers.userId, users.id))
+      .where(eq(enterpriseMembers.enterpriseId, enterpriseId));
+    return results.map(r => ({ ...r.member, user: r.user }));
+  }
+
+  async getEnterpriseMember(enterpriseId: number, userId: number): Promise<EnterpriseMember | undefined> {
+    const [member] = await db.select().from(enterpriseMembers)
+      .where(and(eq(enterpriseMembers.enterpriseId, enterpriseId), eq(enterpriseMembers.userId, userId)));
+    return member;
+  }
+
+  async getUserEnterprises(userId: number): Promise<(EnterpriseMember & { enterprise: Enterprise })[]> {
+    const results = await db
+      .select({ member: enterpriseMembers, enterprise: enterprises })
+      .from(enterpriseMembers)
+      .innerJoin(enterprises, eq(enterpriseMembers.enterpriseId, enterprises.id))
+      .where(and(
+        eq(enterpriseMembers.userId, userId),
+        eq(enterpriseMembers.status, 'active'),
+        eq(enterprises.isActive, true)
+      ));
+    return results.map(r => ({ ...r.member, enterprise: r.enterprise }));
+  }
+
+  async updateEnterpriseMember(id: number, data: Partial<EnterpriseMember>): Promise<EnterpriseMember | undefined> {
+    const [updated] = await db.update(enterpriseMembers).set(data).where(eq(enterpriseMembers.id, id)).returning();
+    return updated;
+  }
+
+  async removeEnterpriseMember(id: number): Promise<boolean> {
+    const result = await db.delete(enterpriseMembers).where(eq(enterpriseMembers.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // === Enterprise drone image operations ===
+
+  async addEnterpriseDroneImage(data: InsertEnterpriseDroneImage): Promise<EnterpriseDroneImage> {
+    const [created] = await db.insert(enterpriseDroneImages).values(data).returning();
+    return created;
+  }
+
+  async getEnterpriseDroneImages(enterpriseId: number): Promise<DroneImage[]> {
+    const results = await db
+      .select({ droneImage: droneImages })
+      .from(enterpriseDroneImages)
+      .innerJoin(droneImages, eq(enterpriseDroneImages.droneImageId, droneImages.id))
+      .where(eq(enterpriseDroneImages.enterpriseId, enterpriseId));
+    return results.map(r => r.droneImage);
+  }
+
+  async removeEnterpriseDroneImage(enterpriseId: number, droneImageId: number): Promise<boolean> {
+    const result = await db.delete(enterpriseDroneImages)
+      .where(and(eq(enterpriseDroneImages.enterpriseId, enterpriseId), eq(enterpriseDroneImages.droneImageId, droneImageId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // === Enterprise Cesium tileset operations ===
+
+  async addEnterpriseCesiumTileset(data: InsertEnterpriseCesiumTileset): Promise<EnterpriseCesiumTileset> {
+    const [created] = await db.insert(enterpriseCesiumTilesets).values(data).returning();
+    return created;
+  }
+
+  async getEnterpriseCesiumTilesets(enterpriseId: number): Promise<Cesium3dTileset[]> {
+    const results = await db
+      .select({ tileset: cesium3dTilesets })
+      .from(enterpriseCesiumTilesets)
+      .innerJoin(cesium3dTilesets, eq(enterpriseCesiumTilesets.cesiumTilesetId, cesium3dTilesets.id))
+      .where(eq(enterpriseCesiumTilesets.enterpriseId, enterpriseId));
+    return results.map(r => r.tileset);
+  }
+
+  async removeEnterpriseCesiumTileset(enterpriseId: number, tilesetId: number): Promise<boolean> {
+    const result = await db.delete(enterpriseCesiumTilesets)
+      .where(and(eq(enterpriseCesiumTilesets.enterpriseId, enterpriseId), eq(enterpriseCesiumTilesets.cesiumTilesetId, tilesetId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // === Enterprise invite operations ===
+
+  async createEnterpriseInvite(invite: InsertEnterpriseInvite): Promise<EnterpriseInvite> {
+    const [created] = await db.insert(enterpriseInvites).values(invite).returning();
+    return created;
+  }
+
+  async getEnterpriseInviteByCode(code: string): Promise<(EnterpriseInvite & { enterprise: Enterprise }) | undefined> {
+    const results = await db
+      .select({ invite: enterpriseInvites, enterprise: enterprises })
+      .from(enterpriseInvites)
+      .innerJoin(enterprises, eq(enterpriseInvites.enterpriseId, enterprises.id))
+      .where(and(eq(enterpriseInvites.inviteCode, code), eq(enterpriseInvites.isActive, true)));
+    if (results.length === 0) return undefined;
+    return { ...results[0].invite, enterprise: results[0].enterprise };
+  }
+
+  async getEnterpriseInvites(enterpriseId: number): Promise<EnterpriseInvite[]> {
+    return await db.select().from(enterpriseInvites).where(eq(enterpriseInvites.enterpriseId, enterpriseId));
+  }
+
+  async useEnterpriseInvite(inviteId: number): Promise<EnterpriseInvite | undefined> {
+    const [updated] = await db.update(enterpriseInvites)
+      .set({ usedCount: sql`${enterpriseInvites.usedCount} + 1` })
+      .where(eq(enterpriseInvites.id, inviteId))
+      .returning();
+    return updated;
+  }
+
+  async deactivateEnterpriseInvite(inviteId: number): Promise<boolean> {
+    const [updated] = await db.update(enterpriseInvites)
+      .set({ isActive: false })
+      .where(eq(enterpriseInvites.id, inviteId))
+      .returning();
+    return !!updated;
   }
 }

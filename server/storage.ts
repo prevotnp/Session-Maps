@@ -28,7 +28,12 @@ import {
   BackgroundLocationToken,
   Activity, InsertActivity,
   Cesium3dTileset, InsertCesium3dTileset,
-  DirectMessage, InsertDirectMessage
+  DirectMessage, InsertDirectMessage,
+  Enterprise, InsertEnterprise,
+  EnterpriseMember, InsertEnterpriseMember,
+  EnterpriseDroneImage, InsertEnterpriseDroneImage,
+  EnterpriseCesiumTileset, InsertEnterpriseCesiumTileset,
+  EnterpriseInvite, InsertEnterpriseInvite,
 } from "@shared/schema";
 
 // Modify the interface with any CRUD methods
@@ -256,6 +261,39 @@ export interface IStorage {
   createBackgroundLocationToken(userId: number, sessionId: number, token: string, expiresAt: Date): Promise<BackgroundLocationToken>;
   getBackgroundLocationToken(token: string): Promise<BackgroundLocationToken | undefined>;
   deleteBackgroundLocationTokensForSession(userId: number, sessionId: number): Promise<void>;
+
+  // Enterprise operations
+  createEnterprise(enterprise: InsertEnterprise): Promise<Enterprise>;
+  getEnterprise(id: number): Promise<Enterprise | undefined>;
+  getEnterpriseBySlug(slug: string): Promise<Enterprise | undefined>;
+  getAllEnterprises(): Promise<Enterprise[]>;
+  updateEnterprise(id: number, data: Partial<Enterprise>): Promise<Enterprise | undefined>;
+  deleteEnterprise(id: number): Promise<boolean>;
+
+  // Enterprise member operations
+  addEnterpriseMember(member: InsertEnterpriseMember): Promise<EnterpriseMember>;
+  getEnterpriseMembers(enterpriseId: number): Promise<(EnterpriseMember & { user: User })[]>;
+  getEnterpriseMember(enterpriseId: number, userId: number): Promise<EnterpriseMember | undefined>;
+  getUserEnterprises(userId: number): Promise<(EnterpriseMember & { enterprise: Enterprise })[]>;
+  updateEnterpriseMember(id: number, data: Partial<EnterpriseMember>): Promise<EnterpriseMember | undefined>;
+  removeEnterpriseMember(id: number): Promise<boolean>;
+
+  // Enterprise drone image operations
+  addEnterpriseDroneImage(data: InsertEnterpriseDroneImage): Promise<EnterpriseDroneImage>;
+  getEnterpriseDroneImages(enterpriseId: number): Promise<DroneImage[]>;
+  removeEnterpriseDroneImage(enterpriseId: number, droneImageId: number): Promise<boolean>;
+
+  // Enterprise Cesium tileset operations
+  addEnterpriseCesiumTileset(data: InsertEnterpriseCesiumTileset): Promise<EnterpriseCesiumTileset>;
+  getEnterpriseCesiumTilesets(enterpriseId: number): Promise<Cesium3dTileset[]>;
+  removeEnterpriseCesiumTileset(enterpriseId: number, tilesetId: number): Promise<boolean>;
+
+  // Enterprise invite operations
+  createEnterpriseInvite(invite: InsertEnterpriseInvite): Promise<EnterpriseInvite>;
+  getEnterpriseInviteByCode(code: string): Promise<(EnterpriseInvite & { enterprise: Enterprise }) | undefined>;
+  getEnterpriseInvites(enterpriseId: number): Promise<EnterpriseInvite[]>;
+  useEnterpriseInvite(inviteId: number): Promise<EnterpriseInvite | undefined>;
+  deactivateEnterpriseInvite(inviteId: number): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -611,6 +649,31 @@ export class MemStorage implements IStorage {
   async deleteBackgroundLocationTokensForSession(userId: number, sessionId: number): Promise<void> {
     // no-op
   }
+
+  // Enterprise stubs
+  async createEnterprise(enterprise: InsertEnterprise): Promise<Enterprise> { throw new Error("Not implemented in MemStorage"); }
+  async getEnterprise(id: number): Promise<Enterprise | undefined> { return undefined; }
+  async getEnterpriseBySlug(slug: string): Promise<Enterprise | undefined> { return undefined; }
+  async getAllEnterprises(): Promise<Enterprise[]> { return []; }
+  async updateEnterprise(id: number, data: Partial<Enterprise>): Promise<Enterprise | undefined> { return undefined; }
+  async deleteEnterprise(id: number): Promise<boolean> { return false; }
+  async addEnterpriseMember(member: InsertEnterpriseMember): Promise<EnterpriseMember> { throw new Error("Not implemented in MemStorage"); }
+  async getEnterpriseMembers(enterpriseId: number): Promise<(EnterpriseMember & { user: User })[]> { return []; }
+  async getEnterpriseMember(enterpriseId: number, userId: number): Promise<EnterpriseMember | undefined> { return undefined; }
+  async getUserEnterprises(userId: number): Promise<(EnterpriseMember & { enterprise: Enterprise })[]> { return []; }
+  async updateEnterpriseMember(id: number, data: Partial<EnterpriseMember>): Promise<EnterpriseMember | undefined> { return undefined; }
+  async removeEnterpriseMember(id: number): Promise<boolean> { return false; }
+  async addEnterpriseDroneImage(data: InsertEnterpriseDroneImage): Promise<EnterpriseDroneImage> { throw new Error("Not implemented in MemStorage"); }
+  async getEnterpriseDroneImages(enterpriseId: number): Promise<DroneImage[]> { return []; }
+  async removeEnterpriseDroneImage(enterpriseId: number, droneImageId: number): Promise<boolean> { return false; }
+  async addEnterpriseCesiumTileset(data: InsertEnterpriseCesiumTileset): Promise<EnterpriseCesiumTileset> { throw new Error("Not implemented in MemStorage"); }
+  async getEnterpriseCesiumTilesets(enterpriseId: number): Promise<Cesium3dTileset[]> { return []; }
+  async removeEnterpriseCesiumTileset(enterpriseId: number, tilesetId: number): Promise<boolean> { return false; }
+  async createEnterpriseInvite(invite: InsertEnterpriseInvite): Promise<EnterpriseInvite> { throw new Error("Not implemented in MemStorage"); }
+  async getEnterpriseInviteByCode(code: string): Promise<(EnterpriseInvite & { enterprise: Enterprise }) | undefined> { return undefined; }
+  async getEnterpriseInvites(enterpriseId: number): Promise<EnterpriseInvite[]> { return []; }
+  async useEnterpriseInvite(inviteId: number): Promise<EnterpriseInvite | undefined> { return undefined; }
+  async deactivateEnterpriseInvite(inviteId: number): Promise<boolean> { return false; }
 }
 
 import { DatabaseStorage } from "./databaseStorage";

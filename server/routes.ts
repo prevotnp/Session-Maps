@@ -18,6 +18,7 @@ import { registerMessagingRoutes } from "./routes/messaging";
 import { registerLiveMapRoutes } from "./routes/liveMaps";
 import { registerActivityRoutes } from "./routes/activities";
 import { registerMiscRoutes } from "./routes/misc";
+import { registerEnterpriseRoutes } from "./routes/enterprise";
 
 // Shared utilities
 import { validateRequest, parseId } from "./routes/utils";
@@ -322,6 +323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLiveMapRoutes(app, wsState);
   registerActivityRoutes(app);
   registerMiscRoutes(app);
+  registerEnterpriseRoutes(app);
 
   return httpServer;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Map, MessageCircle, Route, User, Users, Upload, Compass } from 'lucide-react';
+import { Map, MessageCircle, Route, User, Users, Upload, Compass, Building2 } from 'lucide-react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,12 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ onTabChange }) => {
   });
 
   const unreadCount = unreadData?.count || 0;
+
+  const { data: myEnterprises = [] } = useQuery<any[]>({
+    queryKey: ["/api/my-enterprises"],
+    refetchInterval: 60000,
+  });
+  const hasEnterprise = myEnterprises.length > 0;
 
   return (
     <div 
@@ -91,7 +97,17 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({ onTabChange }) => {
           </Link>
         )}
         
-        <button 
+        {hasEnterprise && (
+          <button
+            className="py-3 px-2 sm:px-4 flex flex-col items-center text-white/80 hover:text-white min-w-[48px] min-h-[48px] active:scale-95 transition-transform"
+            onClick={() => onTabChange('enterprise')}
+          >
+            <Building2 className="h-6 w-6 sm:h-7 sm:w-7" />
+            <span className="text-[10px] sm:text-xs mt-1 font-medium">Enterprise</span>
+          </button>
+        )}
+
+        <button
           className="py-3 px-2 sm:px-4 flex flex-col items-center text-white/80 hover:text-white min-w-[48px] min-h-[48px] active:scale-95 transition-transform"
           onClick={() => onTabChange('routes')}
           data-testid="button-routes"

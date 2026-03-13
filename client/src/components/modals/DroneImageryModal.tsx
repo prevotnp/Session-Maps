@@ -65,6 +65,34 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
   const { data: droneImages, isLoading } = useQuery<DroneImage[]>({
     queryKey: ['/api/drone-images'],
   });
+
+  // Fetch enterprise memberships and their drone images
+  const { data: myEnterprises = [] } = useQuery<any[]>({
+    queryKey: ['/api/my-enterprises'],
+    enabled: isOpen,
+  });
+
+  // Fetch enterprise drone images for each enterprise the user belongs to
+  const enterpriseIds = myEnterprises.map((e: any) => e.enterpriseId);
+  const { data: enterpriseDroneImages = [] } = useQuery<{ enterpriseId: number; enterpriseName: string; images: DroneImage[] }[]>({
+    queryKey: ['/api/enterprise-drone-images', enterpriseIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        myEnterprises.map(async (membership: any) => {
+          try {
+            const res = await fetch(`/api/enterprises/${membership.enterpriseId}/drone-images`, { credentials: 'include' });
+            if (!res.ok) return { enterpriseId: membership.enterpriseId, enterpriseName: membership.enterprise?.name || 'Enterprise', images: [] };
+            const images = await res.json();
+            return { enterpriseId: membership.enterpriseId, enterpriseName: membership.enterprise?.name || 'Enterprise', images };
+          } catch {
+            return { enterpriseId: membership.enterpriseId, enterpriseName: membership.enterprise?.name || 'Enterprise', images: [] };
+          }
+        })
+      );
+      return results.filter(r => r.images.length > 0);
+    },
+    enabled: isOpen && myEnterprises.length > 0,
+  });
   
   // Activate/deactivate drone imagery mutation
   const toggleDroneImageMutation = useMutation({
@@ -626,6 +654,60 @@ const DroneImageryModal: React.FC<DroneImageryModalProps> = ({ isOpen, onClose, 
             </div>
           )}
           
+          {/* Enterprise Drone Layers */}
+          {enterpriseDroneImages.length > 0 && (
+            <>
+              {enterpriseDroneImages.map((enterprise) => (
+                <div key={enterprise.enterpriseId}>
+                  <h3 className="text-md font-medium mb-3 flex items-center gap-2">
+                    <span className="text-primary">●</span>
+                    {enterprise.enterpriseName}
+                  </h3>
+                  <div className="border border-primary/30 rounded-lg overflow-hidden mb-6">
+                    {enterprise.images.map((image: any, index: number) => (
+                      <div
+                        key={image.id}
+                        className={`p-3 flex items-center gap-3 ${index !== enterprise.images.length - 1 ? 'border-b border-white/20' : ''}`}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleActivateImage(image);
+                          }}
+                          className="px-4 py-1.5 rounded text-sm font-medium transition-colors bg-green-600 text-white hover:bg-green-700"
+                        >
+                          View
+                        </button>
+                        {image.isActive && (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeactivateImage(image.id);
+                            }}
+                            className="px-4 py-1.5 rounded text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
+                          >
+                            Hide
+                          </button>
+                        )}
+                        {cesiumTilesetsByDroneImage[image.id] && (
+                          <button
+                            onClick={() => handleViewCesium3D(cesiumTilesetsByDroneImage[image.id].id)}
+                            className="px-3 py-1.5 rounded text-sm font-medium bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
+                          >
+                            3D Map
+                          </button>
+                        )}
+                        <span className="font-medium text-white flex-1">{image.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
           <Button
             className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 rounded-xl"
             onClick={onClose}

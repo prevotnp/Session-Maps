@@ -19,6 +19,7 @@ import RecordActivity from "@/pages/RecordActivity";
 import ActivityDetail from "@/pages/ActivityDetail";
 import CesiumViewer from "@/pages/CesiumViewer";
 import UploadManagement from "@/pages/UploadManagement";
+import EnterprisePortal from "@/pages/EnterprisePortal";
 
 function ProtectedRoute({ component: Component, ...props }: { component: React.ComponentType<any>, [key: string]: any }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -48,6 +49,7 @@ function Router() {
       <Route path="/admin">{() => <ProtectedRoute component={AdminPanel} />}</Route>
       <Route path="/upload">{() => <ProtectedRoute component={UploadManagement} />}</Route>
       <Route path="/cesium/:id">{(params) => <ProtectedRoute component={CesiumViewer} {...params} />}</Route>
+      <Route path="/enterprise/:id">{(params) => <ProtectedRoute component={EnterprisePortal} {...params} />}</Route>
       <Route path="/live-map/:id">{(params) => <ProtectedRoute component={LiveSharedMap} {...params} />}</Route>
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Auth} />
