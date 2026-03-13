@@ -458,10 +458,6 @@ export function useActivityRecording() {
       });
     }, 1000);
 
-    toast({
-      title: 'Recording started',
-      description: `Recording ${activityType} activity`,
-    });
   }, [handlePositionUpdate, handlePositionError, toast, wakeLock]);
 
   const pauseRecording = useCallback(() => {
