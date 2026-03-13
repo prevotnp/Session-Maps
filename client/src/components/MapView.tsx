@@ -206,6 +206,7 @@ const MapView: React.FC<MapViewProps> = ({
     setIsMeasurementMode,
     measurementDistance,
     measurementPath,
+    measurementElevations,
     clearMeasurementPath,
     // Offline area selection
     isOfflineSelectionMode,
@@ -856,11 +857,27 @@ const MapView: React.FC<MapViewProps> = ({
             }, 50);
           });
 
-          const marker = new mapboxgl.Marker({ element: markerEl })
+          const isOwner = (user as any)?.id === displayedRoute.userId;
+          const marker = new mapboxgl.Marker({ element: markerEl, draggable: isOwner })
             .setLngLat([parseFloat(poi.longitude), parseFloat(poi.latitude)])
             .setPopup(popup)
             .addTo(map);
-          
+
+          if (isOwner) {
+            markerEl.style.cursor = 'grab';
+            marker.on('dragend', () => {
+              const lngLat = marker.getLngLat();
+              updatePOIMutation.mutate({
+                routeId: displayedRoute.id,
+                poiId: poi.id,
+                data: {
+                  latitude: lngLat.lat,
+                  longitude: lngLat.lng
+                }
+              });
+            });
+          }
+
           poiMarkersRef.current.push(marker);
         });
       } catch (error) {
@@ -874,7 +891,7 @@ const MapView: React.FC<MapViewProps> = ({
       poiMarkersRef.current.forEach(marker => marker.remove());
       poiMarkersRef.current = [];
     };
-  }, [displayedRoute?.id, map, isEditingDisplayedRoute, poiRefreshTrigger]);
+  }, [displayedRoute?.id, map, isEditingDisplayedRoute, poiRefreshTrigger, user]);
   
   // Effect to handle opening route builder for editing
   useEffect(() => {
@@ -1083,14 +1100,23 @@ const MapView: React.FC<MapViewProps> = ({
   useEffect(() => {
     // Only auto-load once on initial page load, not on subsequent changes
     if (hasAutoLoadedRef.current) {
-      console.log('Skipping auto-load - already loaded once');
       return;
     }
-    
+
     if (!isMapReady || !addDroneImagery) {
       return;
     }
-    
+
+    // Check for image passed via global variable (from Upload page "View on Map" navigation)
+    const globalImage = (window as any).__activatedDroneImage;
+    if (globalImage) {
+      console.log('Loading drone imagery from global handoff:', globalImage.name, 'ID:', globalImage.id);
+      hasAutoLoadedRef.current = true;
+      (window as any).__activatedDroneImage = null; // Clear it
+      addDroneImagery(globalImage);
+      return;
+    }
+
     if (activeDroneImage && !activeDroneImagery) {
       console.log('INITIAL auto-load of active drone imagery:', activeDroneImage.name, 'ID:', activeDroneImage.id);
       hasAutoLoadedRef.current = true;
@@ -1353,9 +1379,8 @@ const MapView: React.FC<MapViewProps> = ({
             'line-cap': 'round'
           },
           paint: {
-            'line-color': '#22c55e',
-            'line-width': 4,
-            'line-dasharray': [2, 1]
+            'line-color': '#3b82f6',
+            'line-width': 2
           }
         });
 
@@ -1649,7 +1674,7 @@ const MapView: React.FC<MapViewProps> = ({
       {/* Drone Imagery Loading Indicator */}
       {isDroneImageryLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-dark/95 backdrop-blur-md rounded-2xl shadow-2xl border border-green-500/30 px-10 py-8 animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-black/90 backdrop-blur-md rounded-2xl shadow-2xl border border-green-500/30 px-10 py-8 animate-in fade-in duration-300 pointer-events-auto">
             <div className="flex flex-col items-center gap-4">
               <div className="relative w-14 h-14">
                 <div className="absolute inset-0 border-4 border-green-500/20 rounded-full" />
@@ -1686,7 +1711,7 @@ const MapView: React.FC<MapViewProps> = ({
       
       {/* Distance Measurement Panel - Top Center */}
       {isMeasurementMode && (
-        <div 
+        <div
           className="absolute top-24 left-1/2 transform -translate-x-1/2 z-50 bg-dark/95 backdrop-blur-sm rounded-xl shadow-2xl border border-white/20 px-4 py-3 animate-in fade-in duration-300"
           data-testid="measurement-notification"
         >
@@ -1698,6 +1723,20 @@ const MapView: React.FC<MapViewProps> = ({
               <p className="text-lg font-bold text-white">
                 {measurementDistance || 'Tap to add points'}
               </p>
+              {measurementPath.length >= 2 && measurementElevations.length >= 2 && (() => {
+                const firstElev = measurementElevations[0];
+                const lastElev = measurementElevations[measurementElevations.length - 1];
+                if (firstElev !== null && firstElev !== undefined && lastElev !== null && lastElev !== undefined) {
+                  const elevChangeFt = Math.round((lastElev - firstElev) * 3.28084);
+                  const sign = elevChangeFt >= 0 ? '+' : '';
+                  return (
+                    <p className="text-xs text-cyan-400 mt-0.5">
+                      Elev change: {sign}{elevChangeFt} ft
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
             {measurementPath.length > 0 && (
               <button
@@ -1730,7 +1769,13 @@ const MapView: React.FC<MapViewProps> = ({
             setPendingPOILocation(null);
           }}
           isOwner={(user as any)?.id === displayedRoute.userId}
-          onAddPOIMode={(enabled) => setIsAddingPOIMode(enabled)}
+          onAddPOIMode={(enabled) => {
+            setIsAddingPOIMode(enabled);
+            if (enabled) {
+              setIsMarkerMode(false);
+              setIsAddingWaypointMode(false);
+            }
+          }}
           pendingPOILocation={pendingPOILocation}
           onClearPendingPOI={() => setPendingPOILocation(null)}
           onPOIsChanged={() => setPoiRefreshTrigger(prev => prev + 1)}
@@ -2230,7 +2275,6 @@ const MapView: React.FC<MapViewProps> = ({
         onToggleOutdoorPOIs={() => setShowOutdoorPOIs(!showOutdoorPOIs)}
         esriImageryEnabled={esriImageryEnabled}
         onToggleEsriImagery={toggleEsriImagery}
-        onOpenAIAssist={() => setIsAIAssistOpen(!isAIAssistOpen)}
         isAIAssistOpen={isAIAssistOpen}
       />
 

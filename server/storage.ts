@@ -64,6 +64,7 @@ export interface IStorage {
   createCesium3dTileset(tileset: InsertCesium3dTileset): Promise<Cesium3dTileset>;
   getCesium3dTileset(id: number): Promise<Cesium3dTileset | undefined>;
   getCesium3dTilesetsByUser(userId: number): Promise<Cesium3dTileset[]>;
+  getAllCesium3dTilesets(): Promise<Cesium3dTileset[]>;
   getCesium3dTilesetByDroneImageId(droneImageId: number): Promise<Cesium3dTileset | undefined>;
   deleteCesium3dTileset(id: number): Promise<boolean>;
   
@@ -583,6 +584,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.cesium3dTilesets.values()).filter(
       (tileset) => tileset.userId === userId
     );
+  }
+
+  async getAllCesium3dTilesets(): Promise<Cesium3dTileset[]> {
+    return Array.from(this.cesium3dTilesets.values());
   }
 
   async getCesium3dTilesetByDroneImageId(droneImageId: number): Promise<Cesium3dTileset | undefined> {

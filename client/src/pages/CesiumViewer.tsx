@@ -21,10 +21,8 @@ import {
   Mountain,
   Loader2,
   Home,
-  Sparkles
 } from 'lucide-react';
 import CesiumRouteBuilder from '@/components/CesiumRouteBuilder';
-import AIRouteAssistPanel from '@/components/AIRouteAssistPanel';
 
 import CesiumRouteSummaryPanel from '@/components/CesiumRouteSummaryPanel';
 import type { Route } from '@shared/schema';
@@ -108,7 +106,6 @@ export default function CesiumViewer() {
   const [mapOverlayLoading, setMapOverlayLoading] = useState(false);
 
   const [isRouteBuilderOpen, setIsRouteBuilderOpen] = useState(false);
-  const [isAIAssistOpen, setIsAIAssistOpen] = useState(false);
   const [showControlHints, setShowControlHints] = useState(true);
   const [isRoutesListOpen, setIsRoutesListOpen] = useState(false);
   const [viewingRoute, setViewingRoute] = useState<Route | null>(null);
@@ -124,7 +121,7 @@ export default function CesiumViewer() {
     queryKey: ['/api/cesium-tilesets', tilesetId],
     queryFn: async () => {
       const res = await fetch(`/api/cesium-tilesets/${tilesetId}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load tileset');
+      if (!res.ok) throw new Error('Failed to load 3D map');
       return res.json();
     },
     enabled: !!tilesetId
@@ -890,7 +887,7 @@ export default function CesiumViewer() {
   if (isFetching) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white text-lg">Loading 3D tileset info...</div>
+        <div className="text-white text-lg">Loading 3D map info...</div>
       </div>
     );
   }
@@ -899,7 +896,7 @@ export default function CesiumViewer() {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-900">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">3D tileset not found</p>
+          <p className="text-red-400 text-lg mb-4">3D map not found</p>
           <Button onClick={() => setLocation("/")} variant="outline">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Go Back
@@ -934,7 +931,7 @@ export default function CesiumViewer() {
         </div>
       )}
 
-      <div className="absolute top-4 left-4 z-40 flex items-center gap-3">
+      <div className="absolute left-4 z-40 flex items-center gap-3" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <Button
           variant="outline"
           size="sm"
@@ -946,11 +943,11 @@ export default function CesiumViewer() {
         </Button>
         <div className="bg-gray-900/80 border border-white/20 rounded-md px-3 py-1.5">
           <h2 className="text-white text-sm font-medium">{tileset.name}</h2>
-          <p className="text-white/50 text-xs">3D Tileset</p>
+          <p className="text-white/50 text-xs">3D Map</p>
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 z-40 flex flex-col gap-1.5 items-end">
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-1.5 items-end">
         <button
           className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-gray-900/80 border text-white hover:bg-gray-800 transition-colors ${isRouteBuilderOpen ? 'ring-2 ring-green-400 border-green-400' : 'border-white/20'}`}
           onClick={handleOpenRouteBuilder}
@@ -1006,14 +1003,6 @@ export default function CesiumViewer() {
           <span className="text-[10px] font-medium leading-tight text-center whitespace-pre-line">
             {mapOverlayLoading ? 'Loading...' : 'Map\nOverlay'}
           </span>
-        </button>
-
-        <button
-          className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-gray-900/80 border text-white hover:bg-gray-800 transition-colors ${isAIAssistOpen ? 'ring-2 ring-yellow-400 border-yellow-400' : 'border-white/20'}`}
-          onClick={() => setIsAIAssistOpen(!isAIAssistOpen)}
-        >
-          <Sparkles className={`w-5 h-5 mb-0.5 ${isAIAssistOpen ? 'text-yellow-400' : 'text-yellow-300'}`} />
-          <span className="text-[10px] font-medium leading-tight text-center whitespace-pre-line">{'AI\nAssist'}</span>
         </button>
 
         <div className="border-t border-white/10 pt-1.5 flex flex-col gap-1.5 w-full">
@@ -1110,21 +1099,8 @@ export default function CesiumViewer() {
         />
       )}
 
-      <AIRouteAssistPanel
-        isOpen={isAIAssistOpen}
-        onClose={() => setIsAIAssistOpen(false)}
-        mapCenter={viewerRef.current ? (() => {
-          try {
-            const carto = viewerRef.current!.camera.positionCartographic;
-            return { lat: carto.latitude * 180 / Math.PI, lng: carto.longitude * 180 / Math.PI };
-          } catch { return null; }
-        })() : null}
-        mapZoom={10}
-        onAddWaypoints={() => {}}
-      />
-
       {isRoutesListOpen && (
-        <div className="absolute left-4 top-20 bottom-20 w-80 z-40 pointer-events-auto bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden flex flex-col">
+        <div className="absolute left-4 bottom-20 w-80 z-40 pointer-events-auto bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden flex flex-col" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 80px)' }}>
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <h3 className="text-white font-semibold flex items-center gap-2">
               <RouteIcon className="w-4 h-4" />

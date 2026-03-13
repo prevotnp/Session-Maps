@@ -182,7 +182,7 @@ export default function DroneImageryUpload({ onClose, onUploadSuccess }: DroneIm
           Upload Drone Imagery
         </CardTitle>
         <CardDescription>
-          Upload processed drone imagery files from Pix4D (GeoTIFF, tiles, or orthomosaics)
+          Upload processed drone imagery files from Pix4D (GeoTIFF or orthomosaics)
         </CardDescription>
       </CardHeader>
       <CardContent>

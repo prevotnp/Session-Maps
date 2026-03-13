@@ -39,6 +39,7 @@ import {
 import { PiBirdFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
 import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
+import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
 import { isNative } from "@/lib/capacitor";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/lib/backgroundLocation";
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -183,6 +184,7 @@ export default function LiveSharedMap() {
   // Local measurement state (not shared with other users)
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [measurementPath, setMeasurementPath] = useState<mapboxgl.LngLat[]>([]);
+  const [measurementElevations, setMeasurementElevations] = useState<(number | null)[]>([]);
   const measurementMarkersRef = useRef<mapboxgl.Marker[]>([]);
   
   // Draw route state
@@ -204,7 +206,6 @@ export default function LiveSharedMap() {
   const [is3DMode, setIs3DMode] = useState(false);
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
-  const [droneModels, setDroneModels] = useState<Record<number, boolean>>({});
   const [mapReady, setMapReady] = useState(false);
   
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -274,18 +275,6 @@ export default function LiveSharedMap() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [droneDropdownOpen]);
 
-  useEffect(() => {
-    if (droneImages && droneImages.length > 0) {
-      droneImages.forEach(async (image) => {
-        try {
-          const response = await fetch(`/api/drone-images/${image.id}/model`);
-          setDroneModels(prev => ({ ...prev, [image.id]: response.ok }));
-        } catch {
-          setDroneModels(prev => ({ ...prev, [image.id]: false }));
-        }
-      });
-    }
-  }, [droneImages]);
 
   const { data: cesiumTilesets = [] } = useQuery<any[]>({
     queryKey: ['/api/cesium-tilesets'],
@@ -695,6 +684,9 @@ export default function LiveSharedMap() {
         setIsAddingPoi(false);
       } else if (isMeasuring) {
         setMeasurementPath(prev => [...prev, e.lngLat]);
+        getElevation(e.lngLat.lng, e.lngLat.lat).then(elev => {
+          setMeasurementElevations(prev => [...prev, elev]);
+        });
       } else if (isDrawingRoute && !isEditingSharedRoute) {
         setDrawRoutePoints(prev => [...prev, [e.lngLat.lng, e.lngLat.lat]]);
       }
@@ -792,20 +784,59 @@ export default function LiveSharedMap() {
           white-space: nowrap;
           transform: translate(-50%, -50%);
         `;
-        labelEl.textContent = formatDistance(dist);
-        
+        // Build label text with distance and elevation change
+        let labelText = formatDistance(dist);
+        const elev1 = measurementElevations[i - 1];
+        const elev2 = measurementElevations[i];
+        if (elev1 !== null && elev1 !== undefined && elev2 !== null && elev2 !== undefined) {
+          const elevChangeFt = Math.round((elev2 - elev1) * 3.28084);
+          const sign = elevChangeFt >= 0 ? '+' : '';
+          labelText += ` | ${sign}${elevChangeFt} ft`;
+        }
+        labelEl.textContent = labelText;
+
         const screenPos = m.project([midLng, midLat]);
         labelEl.style.left = `${screenPos.x}px`;
         labelEl.style.top = `${screenPos.y - 15}px`;
-        
+
         m.getContainer().appendChild(labelEl);
       }
     }
     
-    // Create numbered markers for each point
+    // Create numbered markers for each point with elevation
     measurementPath.forEach((point, index) => {
       const el = document.createElement('div');
       el.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: none;
+      `;
+
+      // Elevation label above the point
+      const elevLabel = document.createElement('div');
+      const elev = measurementElevations[index];
+      if (elev !== null && elev !== undefined) {
+        const elevFt = Math.round(elev * 3.28084);
+        elevLabel.textContent = `${elevFt} ft`;
+      } else {
+        elevLabel.textContent = '...';
+      }
+      elevLabel.style.cssText = `
+        background: rgba(0, 0, 0, 0.8);
+        color: #4FC3F7;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        margin-bottom: 2px;
+        white-space: nowrap;
+      `;
+      el.appendChild(elevLabel);
+
+      // Numbered circle
+      const circle = document.createElement('div');
+      circle.style.cssText = `
         width: 24px;
         height: 24px;
         background: #FF6B35;
@@ -819,12 +850,13 @@ export default function LiveSharedMap() {
         font-weight: bold;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       `;
-      el.textContent = String(index + 1);
-      
-      const marker = new mapboxgl.Marker({ element: el })
+      circle.textContent = String(index + 1);
+      el.appendChild(circle);
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([point.lng, point.lat])
         .addTo(m);
-      
+
       measurementMarkersRef.current.push(marker);
     });
     
@@ -849,11 +881,12 @@ export default function LiveSharedMap() {
     return () => {
       m.off('move', updateLabels);
     };
-  }, [measurementPath]);
-  
+  }, [measurementPath, measurementElevations]);
+
   // Clear measurement when exiting measurement mode
   const clearMeasurement = useCallback(() => {
     setMeasurementPath([]);
+    setMeasurementElevations([]);
     measurementMarkersRef.current.forEach(marker => marker.remove());
     measurementMarkersRef.current = [];
     document.querySelectorAll('.live-map-measurement-label').forEach(el => el.remove());
@@ -1897,7 +1930,6 @@ export default function LiveSharedMap() {
                         ) : (
                           <div>
                             {droneImages.map((droneImage, index) => {
-                              const has3DModel = droneModels[droneImage.id];
                               return (
                                 <div
                                   key={droneImage.id}
@@ -1917,15 +1949,6 @@ export default function LiveSharedMap() {
                                       title="Hide 2D overlay from map"
                                     >
                                       Hide
-                                    </button>
-                                  )}
-                                  {has3DModel && (
-                                    <button
-                                      onClick={() => setLocation(`/drone/${droneImage.id}/3d`)}
-                                      className="px-3 py-1.5 rounded text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                                      title="Open 3D model viewer"
-                                    >
-                                      3D Model
                                     </button>
                                   )}
                                   {cesiumTilesetsByDroneImage[droneImage.id] && (
@@ -2062,12 +2085,26 @@ export default function LiveSharedMap() {
                     {measurementPath.length === 0 ? 'Tap on map to start' : `${measurementPath.length} point${measurementPath.length !== 1 ? 's' : ''}`}
                   </p>
                   <p className="text-lg font-bold text-white">
-                    {measurementPath.length >= 2 
-                      ? `Total: ${totalMeasurementDistance < 1000 
+                    {measurementPath.length >= 2
+                      ? `Total: ${totalMeasurementDistance < 1000
                           ? `${Math.round(totalMeasurementDistance)}m / ${Math.round(totalMeasurementDistance * 3.28084)}ft`
                           : `${(totalMeasurementDistance / 1000).toFixed(2)}km / ${(totalMeasurementDistance * 0.000621371).toFixed(2)}mi`}`
                       : 'Tap to add points'}
                   </p>
+                  {measurementPath.length >= 2 && measurementElevations.length >= 2 && (() => {
+                    const firstElev = measurementElevations[0];
+                    const lastElev = measurementElevations[measurementElevations.length - 1];
+                    if (firstElev !== null && firstElev !== undefined && lastElev !== null && lastElev !== undefined) {
+                      const elevChangeFt = Math.round((lastElev - firstElev) * 3.28084);
+                      const sign = elevChangeFt >= 0 ? '+' : '';
+                      return (
+                        <p className="text-xs text-cyan-400 mt-0.5">
+                          Elev change: {sign}{elevChangeFt} ft
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
                 {measurementPath.length > 0 && (
                   <Button

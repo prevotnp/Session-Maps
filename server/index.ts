@@ -75,21 +75,43 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
+  (async () => {
+    try {
+      const { db } = await import('./db');
+      const { cesium3dTilesets } = await import('@shared/schema');
+      const { like } = await import('drizzle-orm');
+      const localTilesets = await db.select().from(cesium3dTilesets).where(like(cesium3dTilesets.storagePath, 'local:%'));
+      if (localTilesets.length > 0) {
+        const { syncTilesetToObjectStorage } = await import('./cesiumStorageSync');
+        for (const ts of localTilesets) {
+          const localDir = ts.storagePath!.replace('local:', '');
+          const fs = await import('fs');
+          if (fs.existsSync(localDir)) {
+            console.log(`[Startup] Syncing tileset ${ts.id} to Object Storage...`);
+            syncTilesetToObjectStorage(ts.id, localDir).catch(err => {
+              console.error(`[Startup] Sync failed for tileset ${ts.id}:`, err);
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Startup] Error checking for unsynced tilesets:', e);
+    }
+  })();
+
+  // Serve both the API and the client on a single port.
+  // On Replit, port 5000 is the only non-firewalled port.
+  const port = parseInt(process.env.PORT || "5000", 10);
   
-  // Increase server timeout for large file uploads (30 minutes)
-  server.timeout = 30 * 60 * 1000; // 30 minutes
-  server.headersTimeout = 31 * 60 * 1000; // 31 minutes (must be > timeout)
-  server.keepAliveTimeout = 30 * 60 * 1000; // 30 minutes
-  server.requestTimeout = 30 * 60 * 1000; // 30 minutes
+  // Increase server timeout for large file uploads (2 hours)
+  server.timeout = 2 * 60 * 60 * 1000; // 2 hours
+  server.headersTimeout = 2 * 60 * 60 * 1000 + 60000; // 2 hours + 1 min (must be > timeout)
+  server.keepAliveTimeout = 2 * 60 * 60 * 1000; // 2 hours
+  server.requestTimeout = 2 * 60 * 60 * 1000; // 2 hours
   
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
   });

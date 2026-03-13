@@ -194,7 +194,7 @@ export default function CesiumRouteSummaryPanel({
   const elevationLoss = route.elevationLoss ? parseFloat(route.elevationLoss as string) : 0;
 
   return (
-    <div className="absolute left-4 top-20 bottom-20 w-80 z-40 pointer-events-auto flex flex-col bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden">
+    <div className="absolute left-4 bottom-20 w-80 z-40 pointer-events-auto flex flex-col bg-gray-900/90 backdrop-blur-sm border border-white/20 rounded-lg overflow-hidden" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 80px)' }}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-2 min-w-0">
           <RouteIcon className="w-5 h-5 text-[#FF6B35] shrink-0" />
