@@ -9,8 +9,8 @@ interface BackgroundLocationConfig {
 }
 
 async function loadPlugin() {
-  const pkg = '@transistorsoft/capacitor-background-geolocation';
-  const mod = await import(/* @vite-ignore */ pkg);
+  const parts = ['@transistorsoft', 'capacitor-background-geolocation'];
+  const mod = await import(/* @vite-ignore */ parts.join('/'));
   return mod.default;
 }
 
