@@ -202,12 +202,12 @@ export function MessagesModal({ isOpen, onClose, onViewProfile, initialUserId }:
 
         {view === "list" && (
           <>
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+            <div className="flex items-center justify-center p-4 border-b border-gray-700">
               <h2 className="text-lg font-semibold text-white">Messages</h2>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-primary"
+                className="h-9 w-9 text-primary ml-2"
                 onClick={() => setView("new")}
               >
                 <Plus className="h-5 w-5" />
