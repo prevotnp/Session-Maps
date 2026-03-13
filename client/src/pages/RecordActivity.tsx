@@ -97,7 +97,7 @@ export default function RecordActivity() {
       // Restyle mountain peak names to smokey blue
       try {
         if (map.current?.getLayer('natural-point-label')) {
-          map.current.setPaintProperty('natural-point-label', 'text-color', '#7B9DB7');
+          map.current.setPaintProperty('natural-point-label', 'text-color', '#4A9FE5');
         }
       } catch (e) { /* layer may not exist */ }
 

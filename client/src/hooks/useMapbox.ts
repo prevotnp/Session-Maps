@@ -1411,7 +1411,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       // Restyle mountain peak names to smokey blue
       try {
         if (map.getLayer('natural-point-label')) {
-          map.setPaintProperty('natural-point-label', 'text-color', '#7B9DB7');
+          map.setPaintProperty('natural-point-label', 'text-color', '#4A9FE5');
         }
       } catch (e) {
         console.warn('Could not restyle peak labels:', e);
@@ -1634,7 +1634,7 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       // Restyle mountain peak names to smokey blue
       try {
         if (map.getLayer('natural-point-label')) {
-          map.setPaintProperty('natural-point-label', 'text-color', '#7B9DB7');
+          map.setPaintProperty('natural-point-label', 'text-color', '#4A9FE5');
         }
       } catch (e) {
         // Layer may not exist in all styles
