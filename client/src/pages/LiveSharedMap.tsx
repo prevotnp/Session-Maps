@@ -39,7 +39,6 @@ import {
 import { PiBirdFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
 import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
-import { addUserLocationToMap, getElevation } from "@/lib/mapUtils";
 import { isNative } from "@/lib/capacitor";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/lib/backgroundLocation";
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
