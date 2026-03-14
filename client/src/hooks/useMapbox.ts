@@ -528,8 +528,13 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       
       const waypointId = `route-waypoint-${index}`;
       const popupContent = `
-        <div style="padding: 12px; min-width: 180px;">
-          <h3 id="waypoint-name-${waypointId}" style="margin: 0 0 8px 0; color: #1f2937; font-weight: 600; font-size: 14px;">
+        <div style="padding: 12px; min-width: 180px; position: relative;">
+          <button
+            id="close-wp-btn-${waypointId}"
+            style="position: absolute; top: -4px; right: -4px; width: 22px; height: 22px; background: #1f2937; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; line-height: 1;"
+            title="Close"
+          >&times;</button>
+          <h3 id="waypoint-name-${waypointId}" style="margin: 0 0 8px 0; color: #1f2937; font-weight: 600; font-size: 14px; padding-right: 16px;">
             ${escapeHtml(waypointName)}
           </h3>
           <div style="font-size: 12px; color: #6b7280;">
@@ -555,27 +560,38 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
           ` : ''}
         </div>
       `;
-      
-      const popup = new mapboxgl.Popup({ 
+
+      const popup = new mapboxgl.Popup({
         offset: 15,
-        closeButton: true,
+        closeButton: false,
         closeOnClick: false
       }).setHTML(popupContent);
       
-      // Fetch elevation when popup opens (only if not already stored)
-      if (storedElevation === null) {
-        popup.on('open', async () => {
+      // Wire up close button and fetch elevation when popup opens
+      popup.on('open', async () => {
+        setTimeout(() => {
+          const closeBtn = document.getElementById(`close-wp-btn-${waypointId}`);
+          if (closeBtn) {
+            closeBtn.onclick = (e) => {
+              e.stopPropagation();
+              popup.remove();
+            };
+          }
+        }, 50);
+
+        // Fetch elevation if not already stored
+        if (storedElevation === null) {
           try {
             const elevationUrl = `https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/${coord[0]},${coord[1]}.json?layers=contour&limit=50&access_token=${mapboxgl.accessToken}`;
             const response = await fetch(elevationUrl);
             const data = await response.json();
-            
+
             let elevation = 0;
             if (data.features && data.features.length > 0) {
               const elevations = data.features.map((f: any) => f.properties.ele);
               elevation = Math.max(...elevations);
             }
-            
+
             const elevationFeet = Math.round(elevation * 3.28084);
             const elevationElement = document.getElementById(`elevation-${index}`);
             if (elevationElement) {
@@ -588,8 +604,8 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
               elevationElement.innerHTML = `<strong>Elevation:</strong> N/A`;
             }
           }
-        });
-      }
+        }
+      });
       
       // Create marker with optional draggable functionality for owners
       const marker = new mapboxgl.Marker(markerElement, { draggable: isDraggable })
