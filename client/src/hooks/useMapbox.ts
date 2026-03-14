@@ -541,16 +541,18 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
               <strong>Elevation:</strong> ${elevationDisplay}
             </div>
           </div>
+          ${isDraggable ? `
           <div style="margin-top: 10px; display: flex; gap: 6px;">
-            <button 
-              onclick="window.editRouteWaypoint('${waypointId}', '${escapeHtml(waypointName).replace(/'/g, "&#39;")}')" 
+            <button
+              onclick="window.editRouteWaypoint('${waypointId}', '${escapeHtml(waypointName).replace(/'/g, "&#39;")}')"
               style="flex: 1; padding: 6px 10px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;"
             >Edit</button>
-            <button 
-              onclick="window.deleteRouteWaypoint('${waypointId}')" 
+            <button
+              onclick="window.deleteRouteWaypoint('${waypointId}')"
               style="flex: 1; padding: 6px 10px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;"
             >Delete</button>
           </div>
+          ` : ''}
         </div>
       `;
       
