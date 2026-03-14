@@ -37,6 +37,7 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
   const [selectedRouteForSharing, setSelectedRouteForSharing] = useState<RouteWithSharing | null>(null);
   const [friendUsername, setFriendUsername] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'my-maps' | 'shared'>('my-maps');
 
   // Fetch saved routes
   const { data: routes = [], isLoading } = useQuery<RouteWithSharing[]>({
@@ -373,11 +374,37 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
             </DialogTitle>
           </DialogHeader>
           
-          {/* Display All Routes Button */}
-          {routes.length > 0 && onDisplayAllRoutes && (
+          {/* Tab Selector */}
+          {!isLoading && routes.length > 0 && (
+            <div className="flex rounded-lg bg-muted p-1 gap-1">
+              <button
+                onClick={() => { setActiveTab('my-maps'); setSearchQuery(''); }}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'my-maps'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                My Maps ({myRoutes.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab('shared'); setSearchQuery(''); }}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'shared'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Shared With Me ({sharedWithMe.length})
+              </button>
+            </div>
+          )}
+
+          {/* Display All Routes Button — only on My Maps tab */}
+          {activeTab === 'my-maps' && myRoutes.length > 0 && onDisplayAllRoutes && (
             <Button
               onClick={() => {
-                onDisplayAllRoutes(routes);
+                onDisplayAllRoutes(myRoutes);
                 onClose();
               }}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -387,8 +414,8 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
               Display All Routes on Map
             </Button>
           )}
-          
-          <div className="space-y-6">
+
+          <div className="space-y-4">
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">
                 Loading maps...
@@ -401,21 +428,24 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                   Create your first map using the Route Builder tool
                 </p>
               </div>
-            ) : (
+            ) : activeTab === 'my-maps' ? (
               <>
-                {/* My Routes Section */}
-                {myRoutes.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
-                      My Maps ({myRoutes.length})
-                    </h3>
-
+                {myRoutes.length === 0 ? (
+                  <div className="text-center py-8">
+                    <RouteIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground mb-4">No maps created yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      Create your first map using the Route Builder tool
+                    </p>
+                  </div>
+                ) : (
+                  <>
                     {myRoutes.length > 1 && (
-                      <div className="relative mb-4">
+                      <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="text"
-                          placeholder="Search maps..."
+                          placeholder="Search my maps..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="pl-9 pr-9 h-10 w-full"
@@ -436,7 +466,6 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                         )}
                       </div>
                     )}
-
                     <div className="space-y-4">
                       {filteredMyRoutes.map((route) => (
                         <div
@@ -447,15 +476,47 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </>
                 )}
-
-                {/* Shared with Me Section */}
-                {sharedWithMe.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
-                      Maps Shared with Me ({sharedWithMe.length})
-                    </h3>
+              </>
+            ) : (
+              <>
+                {sharedWithMe.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Share2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground mb-4">No maps shared with you yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      When friends share their maps with you, they'll appear here
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {sharedWithMe.length > 1 && (
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="text"
+                          placeholder="Search shared maps..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9 pr-9 h-10 w-full"
+                          data-testid="input-search-shared-routes"
+                        />
+                        {searchQuery && (
+                          <button
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() => setSearchQuery('')}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                        {searchQuery.trim() && (
+                          <p className="text-xs text-muted-foreground mt-1.5 ml-1">
+                            {matchingRouteIds.size} {matchingRouteIds.size === 1 ? 'match' : 'matches'} found
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="space-y-4">
                       {filteredSharedRoutes.map((route) => (
                         <div
@@ -466,7 +527,7 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </>
                 )}
               </>
             )}
