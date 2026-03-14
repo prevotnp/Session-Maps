@@ -397,6 +397,7 @@ export default function RouteBuilderModal({
       routingMode,
       trailProfile: routingMode === 'trail' ? trailProfile : undefined,
       isPublic,
+      waypointIds: JSON.stringify([]),
       pathCoordinates: JSON.stringify(pathCoordinates),
       waypointCoordinates: JSON.stringify(waypointCoordinates),
       totalDistance: "0",
