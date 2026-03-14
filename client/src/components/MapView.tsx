@@ -25,7 +25,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Pencil, Settings2, Route as RouteIcon } from 'lucide-react';
 
 import { useQuery } from '@tanstack/react-query';
 import { addTetonCountyImagery, removeTetonCountyImagery, switchToTetonCountyView, addDroneImageryBoundaries } from '@/lib/mapUtils';
@@ -39,23 +38,17 @@ interface MapViewProps {
   onOpenDroneModal: () => void;
   selectedRoute?: Route | null;
   onRouteDisplayed?: () => void;
-  editingRoute?: Route | null;
-  onRouteEdited?: () => void;
-  onSetEditingRoute?: (route: Route) => void;
   routesToDisplayAll?: Route[] | null;
   onAllRoutesDisplayed?: () => void;
   activatedDroneImage?: DroneImage | null;
   onDroneImageActivated?: () => void;
 }
 
-const MapView: React.FC<MapViewProps> = ({ 
-  onOpenOfflineModal, 
+const MapView: React.FC<MapViewProps> = ({
+  onOpenOfflineModal,
   onOpenDroneModal,
   selectedRoute,
   onRouteDisplayed,
-  editingRoute,
-  onRouteEdited,
-  onSetEditingRoute,
   routesToDisplayAll,
   onAllRoutesDisplayed,
   activatedDroneImage,
@@ -76,19 +69,9 @@ const MapView: React.FC<MapViewProps> = ({
     southWest: { lat: number; lng: number };
   } | null>(null);
   
-  // Route editing state
-  const [isEditingDisplayedRoute, setIsEditingDisplayedRoute] = useState(false);
-  const [routeBeingEdited, setRouteBeingEdited] = useState<Route | null>(null);
-  const [editedWaypoints, setEditedWaypoints] = useState<Array<{
-    name: string;
-    lngLat: [number, number];
-    elevation?: number;
-  }>>([]);
-  const [isAddingWaypointMode, setIsAddingWaypointMode] = useState(false);
-  const [editRoutingMode, setEditRoutingMode] = useState<'direct' | 'road' | 'trail'>('direct');
-  const [editedPathCoordinates, setEditedPathCoordinates] = useState<[number, number][]>([]);
-  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
-  
+  // Click-to-add waypoint mode for RouteSummaryPanel
+  const [isAddingWaypointToRoute, setIsAddingWaypointToRoute] = useState(false);
+
   // POI (Points of Interest) state
   const [isAddingPOIMode, setIsAddingPOIMode] = useState(false);
   const [pendingPOILocation, setPendingPOILocation] = useState<[number, number] | null>(null);
@@ -104,24 +87,6 @@ const MapView: React.FC<MapViewProps> = ({
     note: string | null;
     photos: string | null;
   } | null>(null);
-  
-  // POI editing state (for route edit mode)
-  const [editingPOIs, setEditingPOIs] = useState<Array<{
-    id: number;
-    name: string;
-    latitude: string;
-    longitude: string;
-    elevation: string | null;
-    note: string | null;
-  }>>([]);
-  const [selectedEditPOI, setSelectedEditPOI] = useState<{
-    id: number;
-    name: string;
-    elevation: string;
-    note: string;
-  } | null>(null);
-  const editPOIMarkersRef = useRef<mapboxgl.Marker[]>([]);
-  
   
   // Recording overlay state
   const [showRecordingOverlay, setShowRecordingOverlay] = useState(false);
@@ -177,9 +142,6 @@ const MapView: React.FC<MapViewProps> = ({
     finishRouteBuilding,
     // Route display
     displayRoute,
-    displayEditableRouteWaypoints,
-    getEditableWaypointPositions,
-    clearEditableRouteWaypoints,
     displayedRoute,
     setDisplayedRoute,
     clearDisplayedRoute,
@@ -189,13 +151,8 @@ const MapView: React.FC<MapViewProps> = ({
     allRoutesDisplayed,
     clickedRouteInfo,
     setClickedRouteInfo,
-    // Edit mode functions
-    displayEditModeWaypoints,
-    updateEditModeRouteLine,
-    updateEditModeRouteLineWithPath,
+    // Route line update
     updateDisplayedRouteLine,
-    clearEditModeWaypoints,
-    addEditModeWaypointOnClick,
     // Drone adjustment controls
     isDroneAdjustmentMode,
     setIsDroneAdjustmentMode,
@@ -216,9 +173,6 @@ const MapView: React.FC<MapViewProps> = ({
     completeOfflineAreaSelection,
     offlineSelectionBounds,
     offlineSelectionInvalidDrag,
-    // Draw route mode
-    enableDrawRouteMode,
-    disableDrawRouteMode,
     // Trail info loading
     isTrailInfoLoading,
     // Outdoor POIs
@@ -374,11 +328,7 @@ const MapView: React.FC<MapViewProps> = ({
       const response = await apiRequest('PUT', `/api/routes/${routeId}/pois/${poiId}`, data);
       return response.json();
     },
-    onSuccess: (updatedPOI) => {
-      setEditingPOIs(prev => prev.map(poi => 
-        poi.id === updatedPOI.id ? updatedPOI : poi
-      ));
-      setSelectedEditPOI(null);
+    onSuccess: () => {
       toast({
         title: "POI updated",
         description: "Point of interest has been updated.",
@@ -393,48 +343,6 @@ const MapView: React.FC<MapViewProps> = ({
     }
   });
   
-  // Route update mutation for editing existing routes
-  const updateRouteMutation = useMutation({
-    mutationFn: async ({ routeId, routeData }: { routeId: number; routeData: any }) => {
-      const response = await apiRequest('PUT', `/api/routes/${routeId}`, routeData);
-      return response.json();
-    },
-    onSuccess: (updatedRoute) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/routes'] });
-      
-      // Clear edit mode state
-      clearEditModeWaypoints();
-      setIsEditingDisplayedRoute(false);
-      setEditedWaypoints([]);
-      setEditedPathCoordinates([]);
-      setIsAddingWaypointMode(false);
-      setEditRoutingMode('direct');
-      setRouteBeingEdited(null);
-      // Clear POI editing state
-      setEditingPOIs([]);
-      setSelectedEditPOI(null);
-      editPOIMarkersRef.current.forEach(marker => marker.remove());
-      editPOIMarkersRef.current = [];
-      
-      // Display the updated route on the map
-      if (updatedRoute) {
-        displayRoute(updatedRoute);
-      }
-      
-      toast({
-        title: "Route updated!",
-        description: "Your route changes have been saved.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to update route",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  });
-
   // Auto-save mutation for inline waypoint edits (doesn't clear view state)
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveRouteMutation = useMutation({
@@ -597,7 +505,7 @@ const MapView: React.FC<MapViewProps> = ({
   // Calculate route path using Mapbox Directions API
   const calculateEditedRoutePath = async (
     waypoints: Array<{ lngLat: [number, number] }>,
-    mode: 'direct' | 'road' | 'trail'
+    mode: string
   ): Promise<[number, number][]> => {
     if (waypoints.length < 2) return [];
     
@@ -626,54 +534,35 @@ const MapView: React.FC<MapViewProps> = ({
     return waypoints.map(wp => wp.lngLat);
   };
 
-  // Handle entering edit mode for displayed route - opens the full RouteBuilderModal
-  const handleEditRoute = () => {
+  // Handle adding a waypoint to the currently displayed route (click-to-add mode)
+  const handleAddWaypointToDisplayedRoute = async (lngLat: [number, number]) => {
     if (!displayedRoute) return;
-    
-    // Clear the displayed route first
-    clearDisplayedRoute();
-    displayedRouteIdRef.current = null;
-    
-    // Open the RouteBuilderModal with the full editing experience
-    if (onSetEditingRoute) {
-      onSetEditingRoute(displayedRoute);
+
+    const route = displayedRoute;
+    const existingWaypoints = route.waypointCoordinates
+      ? JSON.parse(route.waypointCoordinates)
+      : [];
+
+    const newWaypoint = {
+      name: `Waypoint ${existingWaypoints.length + 1}`,
+      lngLat,
+      elevation: null
+    };
+
+    const updatedWaypoints = [...existingWaypoints, newWaypoint];
+    const routingMode = (route.routingMode as string) || 'direct';
+
+    // Calculate path
+    let pathCoords: [number, number][];
+    if (routingMode === 'direct' || routingMode === 'draw' || routingMode === 'recorded') {
+      pathCoords = updatedWaypoints.map((wp: any) => wp.lngLat);
     } else {
-      // Fallback: just open the route builder modal with the displayed route
-      setShowRouteBuilderModal(true);
+      pathCoords = await calculateEditedRoutePath(
+        updatedWaypoints.map((wp: any) => ({ lngLat: wp.lngLat })),
+        routingMode
+      );
     }
-  };
-  
-  // Handle cancelling edit mode
-  const handleCancelEdit = () => {
-    setIsEditingDisplayedRoute(false);
-    setEditedWaypoints([]);
-    setEditedPathCoordinates([]);
-    setIsAddingWaypointMode(false);
-    setEditRoutingMode('direct');
-    // Clear POI editing state
-    setEditingPOIs([]);
-    setSelectedEditPOI(null);
-    editPOIMarkersRef.current.forEach(marker => marker.remove());
-    editPOIMarkersRef.current = [];
-    // Re-display the original route
-    if (routeBeingEdited) {
-      displayRoute(routeBeingEdited);
-    }
-    setRouteBeingEdited(null);
-  };
-  
-  // Handle saving edited route
-  const handleSaveEditedRoute = () => {
-    if (!routeBeingEdited || editedWaypoints.length < 2) {
-      toast({
-        title: "Insufficient waypoints",
-        description: "A route must have at least 2 waypoints.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Calculate distance from path coordinates (the actual route path)
+
     const calculatePathDistance = (coords: [number, number][]) => {
       if (coords.length < 2) return 0;
       let total = 0;
@@ -691,40 +580,116 @@ const MapView: React.FC<MapViewProps> = ({
       }
       return total;
     };
-    
-    // Use the full path coordinates for the route line
-    const pathToSave = editedPathCoordinates.length > 0 
-      ? editedPathCoordinates 
-      : editedWaypoints.map(wp => wp.lngLat);
-    
-    updateRouteMutation.mutate({
-      routeId: routeBeingEdited.id,
+
+    const totalDistance = calculatePathDistance(pathCoords);
+
+    // Save to DB
+    autoSaveRouteMutation.mutate({
+      routeId: route.id,
       routeData: {
-        pathCoordinates: JSON.stringify(pathToSave),
-        waypointCoordinates: JSON.stringify(editedWaypoints),
-        totalDistance: calculatePathDistance(pathToSave),
-        routingMode: editRoutingMode
+        pathCoordinates: JSON.stringify(pathCoords),
+        waypointCoordinates: JSON.stringify(updatedWaypoints),
+        totalDistance,
+        routingMode
       }
     });
+
+    // Re-display the route with updated waypoints
+    const updatedRouteData = {
+      ...route,
+      pathCoordinates: JSON.stringify(pathCoords),
+      waypointCoordinates: JSON.stringify(updatedWaypoints),
+      totalDistance: String(totalDistance)
+    };
+    const isOwner = (user as any)?.id === route.userId;
+    displayRoute(
+      updatedRouteData,
+      isOwner,
+      isOwner ? (waypointIndex: number, newLngLat: [number, number], allWaypoints: any[]) => {
+        handleViewWaypointDragged(updatedRouteData as Route, waypointIndex, newLngLat, allWaypoints);
+      } : undefined,
+      isOwner ? (remainingWaypoints: any[]) => {
+        handleViewWaypointDeleted(updatedRouteData as Route, remainingWaypoints);
+      } : undefined
+    );
   };
-  
-  // Handle waypoint drag end
-  const handleWaypointDragEnd = (index: number, newLngLat: [number, number]) => {
-    setEditedWaypoints(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], lngLat: newLngLat };
-      return updated;
+
+  // Handle deleting a waypoint by index from the RouteSummaryPanel
+  const handleDeleteWaypointByIndex = async (index: number) => {
+    if (!displayedRoute) return;
+
+    const route = displayedRoute;
+    const existingWaypoints = route.waypointCoordinates
+      ? JSON.parse(route.waypointCoordinates)
+      : [];
+
+    if (existingWaypoints.length <= 0) return;
+
+    const updatedWaypoints = existingWaypoints.filter((_: any, i: number) => i !== index);
+    const routingMode = (route.routingMode as string) || 'direct';
+
+    let pathCoords: [number, number][];
+    if (updatedWaypoints.length < 2) {
+      pathCoords = updatedWaypoints.map((wp: any) => wp.lngLat);
+    } else if (routingMode === 'direct' || routingMode === 'draw' || routingMode === 'recorded') {
+      pathCoords = updatedWaypoints.map((wp: any) => wp.lngLat);
+    } else {
+      pathCoords = await calculateEditedRoutePath(
+        updatedWaypoints.map((wp: any) => ({ lngLat: wp.lngLat })),
+        routingMode
+      );
+    }
+
+    const calculatePathDistance = (coords: [number, number][]) => {
+      if (coords.length < 2) return 0;
+      let total = 0;
+      for (let i = 1; i < coords.length; i++) {
+        const [lng1, lat1] = coords[i - 1];
+        const [lng2, lat2] = coords[i];
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        total += R * c;
+      }
+      return total;
+    };
+
+    const totalDistance = calculatePathDistance(pathCoords);
+
+    autoSaveRouteMutation.mutate({
+      routeId: route.id,
+      routeData: {
+        pathCoordinates: JSON.stringify(pathCoords),
+        waypointCoordinates: JSON.stringify(updatedWaypoints),
+        totalDistance,
+        routingMode
+      }
     });
+
+    const updatedRouteData = {
+      ...route,
+      pathCoordinates: JSON.stringify(pathCoords),
+      waypointCoordinates: JSON.stringify(updatedWaypoints),
+      totalDistance: String(totalDistance)
+    };
+    const isOwner = (user as any)?.id === route.userId;
+    displayRoute(
+      updatedRouteData,
+      isOwner,
+      isOwner ? (waypointIndex: number, newLngLat: [number, number], allWaypoints: any[]) => {
+        handleViewWaypointDragged(updatedRouteData as Route, waypointIndex, newLngLat, allWaypoints);
+      } : undefined,
+      isOwner ? (remainingWaypoints: any[]) => {
+        handleViewWaypointDeleted(updatedRouteData as Route, remainingWaypoints);
+      } : undefined
+    );
   };
-  
-  // Handle adding a new waypoint
-  const handleAddWaypoint = (lngLat: [number, number]) => {
-    setEditedWaypoints(prev => [
-      ...prev,
-      { name: `Waypoint ${prev.length + 1}`, lngLat, elevation: undefined }
-    ]);
-    setIsAddingWaypointMode(false);
-  };
+
+  // Old edit mode functions removed — editing now happens in RouteSummaryPanel
   
   // Effect to handle selected route display
   useEffect(() => {
@@ -769,8 +734,8 @@ const MapView: React.FC<MapViewProps> = ({
 
   // Effect to display POI markers when viewing a route
   useEffect(() => {
-    if (!displayedRoute || !map || isEditingDisplayedRoute) {
-      // Clear POI markers when route is closed or editing
+    if (!displayedRoute || !map) {
+      // Clear POI markers when route is closed
       poiMarkersRef.current.forEach(marker => marker.remove());
       poiMarkersRef.current = [];
       return;
@@ -891,133 +856,11 @@ const MapView: React.FC<MapViewProps> = ({
       poiMarkersRef.current.forEach(marker => marker.remove());
       poiMarkersRef.current = [];
     };
-  }, [displayedRoute?.id, map, isEditingDisplayedRoute, poiRefreshTrigger, user]);
+  }, [displayedRoute?.id, map, poiRefreshTrigger, user]);
   
-  // Effect to handle opening route builder for editing
-  useEffect(() => {
-    if (editingRoute) {
-      setShowRouteBuilderModal(true);
-    }
-  }, [editingRoute]);
+  // Old editing route effect removed — editing now happens in RouteSummaryPanel
   
-  // Effect to display edit mode waypoints when entering edit mode
-  useEffect(() => {
-    if (isEditingDisplayedRoute && editedWaypoints.length > 0 && isMapReady) {
-      // Clear the regular route display first
-      clearDisplayedRoute();
-      displayedRouteIdRef.current = null;
-      // Display editable waypoints
-      displayEditModeWaypoints(editedWaypoints, handleWaypointDragEnd);
-    }
-  }, [isEditingDisplayedRoute, isMapReady]);
-  
-  // Effect to recalculate route path when waypoints or routing mode changes
-  useEffect(() => {
-    if (isEditingDisplayedRoute && editedWaypoints.length >= 2) {
-      setIsCalculatingRoute(true);
-      calculateEditedRoutePath(editedWaypoints, editRoutingMode)
-        .then(path => {
-          setEditedPathCoordinates(path);
-          setIsCalculatingRoute(false);
-        })
-        .catch(() => {
-          setEditedPathCoordinates(editedWaypoints.map(wp => wp.lngLat));
-          setIsCalculatingRoute(false);
-        });
-    }
-  }, [editedWaypoints, editRoutingMode, isEditingDisplayedRoute]);
-  
-  // Effect to update route line when path coordinates change
-  useEffect(() => {
-    if (isEditingDisplayedRoute && editedPathCoordinates.length > 0) {
-      // Update the route line with the full path
-      updateEditModeRouteLineWithPath(editedPathCoordinates);
-      // Re-display waypoint markers
-      displayEditModeWaypoints(editedWaypoints, handleWaypointDragEnd);
-    }
-  }, [editedPathCoordinates, isEditingDisplayedRoute]);
-  
-  // Effect to clean up edit mode when exiting
-  useEffect(() => {
-    if (!isEditingDisplayedRoute) {
-      clearEditModeWaypoints();
-    }
-  }, [isEditingDisplayedRoute]);
-  
-  // Effect to enable map click for adding waypoints
-  useEffect(() => {
-    if (isAddingWaypointMode && isMapReady) {
-      addEditModeWaypointOnClick(handleAddWaypoint);
-    }
-  }, [isAddingWaypointMode, isMapReady]);
-  
-  // Effect to display draggable POI markers during route edit mode
-  useEffect(() => {
-    if (!isEditingDisplayedRoute || !map || !routeBeingEdited) {
-      // Clean up markers when not in edit mode
-      editPOIMarkersRef.current.forEach(marker => marker.remove());
-      editPOIMarkersRef.current = [];
-      return;
-    }
-    
-    // Clear existing edit POI markers
-    editPOIMarkersRef.current.forEach(marker => marker.remove());
-    editPOIMarkersRef.current = [];
-    
-    // Display POIs as draggable markers
-    editingPOIs.forEach((poi) => {
-      const markerEl = document.createElement('div');
-      markerEl.className = 'edit-poi-marker';
-      markerEl.style.width = '32px';
-      markerEl.style.height = '32px';
-      markerEl.style.cursor = 'grab';
-      markerEl.innerHTML = `
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="#FFD700" stroke="#000" stroke-width="1.5">
-          <polygon points="12,2 15,9 22,9.5 17,14 18.5,22 12,18 5.5,22 7,14 2,9.5 9,9" />
-        </svg>
-      `;
-      
-      const marker = new mapboxgl.Marker({ 
-        element: markerEl,
-        draggable: true 
-      })
-        .setLngLat([parseFloat(poi.longitude), parseFloat(poi.latitude)])
-        .addTo(map);
-      
-      // Handle drag end - update POI position
-      marker.on('dragend', () => {
-        const lngLat = marker.getLngLat();
-        if (routeBeingEdited) {
-          updatePOIMutation.mutate({
-            routeId: routeBeingEdited.id,
-            poiId: poi.id,
-            data: {
-              latitude: lngLat.lat,
-              longitude: lngLat.lng
-            }
-          });
-        }
-      });
-      
-      // Handle click - open edit popup
-      markerEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setSelectedEditPOI({
-          id: poi.id,
-          name: poi.name,
-          elevation: poi.elevation || '',
-          note: poi.note || ''
-        });
-      });
-      
-      editPOIMarkersRef.current.push(marker);
-    });
-    
-    return () => {
-      editPOIMarkersRef.current.forEach(marker => marker.remove());
-      editPOIMarkersRef.current = [];
-    };
-  }, [isEditingDisplayedRoute, editingPOIs, map, routeBeingEdited]);
+  // Old edit mode useEffects removed — editing now happens in RouteSummaryPanel
   
   const activeDroneImage = droneImages?.find(image => image.isActive);
   
@@ -1628,6 +1471,24 @@ const MapView: React.FC<MapViewProps> = ({
     };
   }, [map, isAddingPOIMode]);
 
+  // Handle click-to-add-waypoint mode for adding waypoints to displayed route
+  useEffect(() => {
+    if (!map || !isAddingWaypointToRoute || !displayedRoute) return;
+
+    const handleWaypointClick = (e: mapboxgl.MapMouseEvent) => {
+      const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      handleAddWaypointToDisplayedRoute(lngLat);
+    };
+
+    map.on('click', handleWaypointClick);
+    map.getCanvas().style.cursor = 'crosshair';
+
+    return () => {
+      map.off('click', handleWaypointClick);
+      map.getCanvas().style.cursor = '';
+    };
+  }, [map, isAddingWaypointToRoute, displayedRoute]);
+
   // Start offline area selection
   const handleStartOfflineSelection = () => {
     startOfflineAreaSelection();
@@ -1737,22 +1598,35 @@ const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
       
-      {/* Route Summary Panel - appears when viewing a saved route */}
-      {displayedRoute && !isEditingDisplayedRoute && (
-        <RouteSummaryPanel 
+      {/* Route Summary Panel - unified view/edit/build interface */}
+      {displayedRoute && (
+        <RouteSummaryPanel
           route={displayedRoute}
           onClose={() => {
             clearDisplayedRoute();
             displayedRouteIdRef.current = null;
             setIsAddingPOIMode(false);
             setPendingPOILocation(null);
+            setIsAddingWaypointToRoute(false);
           }}
           isOwner={(user as any)?.id === displayedRoute.userId}
+          isAddingWaypoint={isAddingWaypointToRoute}
+          onStartAddWaypointMode={() => {
+            setIsAddingWaypointToRoute(true);
+            setIsAddingPOIMode(false);
+            setIsMarkerMode(false);
+          }}
+          onStopAddWaypointMode={() => {
+            setIsAddingWaypointToRoute(false);
+          }}
+          onDeleteWaypoint={(index) => {
+            handleDeleteWaypointByIndex(index);
+          }}
           onAddPOIMode={(enabled) => {
             setIsAddingPOIMode(enabled);
             if (enabled) {
               setIsMarkerMode(false);
-              setIsAddingWaypointMode(false);
+              setIsAddingWaypointToRoute(false);
             }
           }}
           pendingPOILocation={pendingPOILocation}
@@ -1774,217 +1648,15 @@ const MapView: React.FC<MapViewProps> = ({
             displayRoute(
               updatedRoute,
               stillOwner,
-              stillOwner ? (waypointIndex, newLngLat, allWaypoints) => {
+              stillOwner ? (waypointIndex: number, newLngLat: [number, number], allWaypoints: any[]) => {
                 handleViewWaypointDragged(updatedRoute, waypointIndex, newLngLat, allWaypoints);
               } : undefined,
-              stillOwner ? (remainingWaypoints) => {
+              stillOwner ? (remainingWaypoints: any[]) => {
                 handleViewWaypointDeleted(updatedRoute, remainingWaypoints);
               } : undefined
             );
           }}
         />
-      )}
-      
-      {/* Route Edit Toolbar - appears when editing a displayed route */}
-      {isEditingDisplayedRoute && routeBeingEdited && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 w-[95%] max-w-lg" style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}>
-          <div className="bg-dark/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/20 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-white">
-                Editing: {routeBeingEdited.name}
-              </h2>
-              <span className="text-sm text-white/60">
-                {editedWaypoints.length} waypoints
-              </span>
-            </div>
-            
-            {/* Routing Mode Toggle */}
-            <div className="flex gap-1 mb-3">
-              <button
-                onClick={() => setEditRoutingMode('direct')}
-                disabled={isCalculatingRoute}
-                className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium transition-colors ${
-                  editRoutingMode === 'direct'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-                data-testid="button-routing-direct"
-              >
-                Direct
-              </button>
-              <button
-                onClick={() => setEditRoutingMode('road')}
-                disabled={isCalculatingRoute}
-                className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium transition-colors ${
-                  editRoutingMode === 'road'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-                data-testid="button-routing-road"
-              >
-                Road
-              </button>
-              <button
-                onClick={() => setEditRoutingMode('trail')}
-                disabled={isCalculatingRoute}
-                className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium transition-colors ${
-                  editRoutingMode === 'trail'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-                data-testid="button-routing-trail"
-              >
-                Trail
-              </button>
-            </div>
-            
-            {isCalculatingRoute && (
-              <p className="mb-2 text-sm text-blue-400 text-center">
-                Calculating route...
-              </p>
-            )}
-            
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setIsAddingWaypointMode(!isAddingWaypointMode)}
-                className={`flex-1 ${isAddingWaypointMode ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-medium`}
-                data-testid="button-add-waypoint"
-              >
-                {isAddingWaypointMode ? 'Click Map to Add' : 'Add Waypoint'}
-              </Button>
-              <Button
-                onClick={handleSaveEditedRoute}
-                disabled={updateRouteMutation.isPending || editedWaypoints.length < 2 || isCalculatingRoute}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium"
-                data-testid="button-save-route-edit"
-              >
-                {updateRouteMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </Button>
-              <Button
-                onClick={handleCancelEdit}
-                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium"
-                data-testid="button-cancel-route-edit"
-              >
-                Cancel
-              </Button>
-            </div>
-            
-            {isAddingWaypointMode && (
-              <p className="mt-2 text-sm text-yellow-400 text-center">
-                Click anywhere on the map to add a new waypoint
-              </p>
-            )}
-            
-            {/* POI count indicator during edit mode */}
-            {editingPOIs.length > 0 && (
-              <p className="mt-2 text-sm text-yellow-400 text-center">
-                {editingPOIs.length} POI{editingPOIs.length !== 1 ? 's' : ''} - Click to edit, drag to move
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* POI Edit Popup - appears when clicking a POI during route edit mode */}
-      {selectedEditPOI && routeBeingEdited && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] w-[90%] max-w-sm">
-          <div className="bg-dark/95 backdrop-blur-md rounded-xl shadow-2xl border border-yellow-500/50 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-bold text-yellow-400 flex items-center gap-2">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFD700" stroke="#000" strokeWidth="1.5">
-                  <polygon points="12,2 15,9 22,9.5 17,14 18.5,22 12,18 5.5,22 7,14 2,9.5 9,9" />
-                </svg>
-                Edit Point of Interest
-              </h3>
-              <button
-                onClick={() => setSelectedEditPOI(null)}
-                className="text-white/60 hover:text-white"
-                data-testid="button-close-poi-edit"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={selectedEditPOI.name}
-                  onChange={(e) => setSelectedEditPOI(prev => prev ? {...prev, name: e.target.value} : null)}
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-yellow-500"
-                  placeholder="POI name"
-                  data-testid="input-poi-name"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Elevation (feet)</label>
-                <input
-                  type="number"
-                  value={selectedEditPOI.elevation}
-                  onChange={(e) => setSelectedEditPOI(prev => prev ? {...prev, elevation: e.target.value} : null)}
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-yellow-500"
-                  placeholder="Elevation in feet"
-                  data-testid="input-poi-elevation"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Notes</label>
-                <textarea
-                  value={selectedEditPOI.note}
-                  onChange={(e) => setSelectedEditPOI(prev => prev ? {...prev, note: e.target.value} : null)}
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-yellow-500 resize-none"
-                  rows={2}
-                  placeholder="Add notes..."
-                  data-testid="input-poi-note"
-                />
-              </div>
-              
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => {
-                    if (selectedEditPOI.name.trim()) {
-                      const elevationInMeters = selectedEditPOI.elevation 
-                        ? (parseFloat(selectedEditPOI.elevation) / 3.28084).toFixed(2)
-                        : null;
-                      updatePOIMutation.mutate({
-                        routeId: routeBeingEdited.id,
-                        poiId: selectedEditPOI.id,
-                        data: {
-                          name: selectedEditPOI.name,
-                          elevation: elevationInMeters,
-                          note: selectedEditPOI.note || null
-                        }
-                      });
-                    } else {
-                      toast({
-                        title: "Name required",
-                        description: "Please enter a name for the POI.",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                  disabled={updatePOIMutation.isPending}
-                  className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-black font-medium"
-                  data-testid="button-save-poi-edit"
-                >
-                  {updatePOIMutation.isPending ? 'Saving...' : 'Save POI'}
-                </Button>
-                <Button
-                  onClick={() => setSelectedEditPOI(null)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium"
-                  data-testid="button-cancel-poi-edit"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
       
       {/* Clicked Route Info Popup - appears when clicking a route line in "display all routes" mode */}
@@ -2147,31 +1819,30 @@ const MapView: React.FC<MapViewProps> = ({
         onClose={() => setShowLocationSharingModal(false)}
       />
       
-      {/* Route Builder Modal */}
-      <RouteBuilderModal 
+      {/* Route Builder Modal — creation-only, then hands off to RouteSummaryPanel */}
+      <RouteBuilderModal
         isOpen={showRouteBuilderModal}
         onClose={() => {
           setShowRouteBuilderModal(false);
-          disableDrawRouteMode();
-          clearEditableRouteWaypoints();
-          if (editingRoute && onRouteEdited) {
-            onRouteEdited();
-          }
         }}
         map={map}
         existingWaypoints={userWaypoints}
-        temporaryWaypoints={routeWaypoints}
-        onStartWaypointPlacement={(routeName, routeDescription) => {
-          startRouteBuildingMode(routeName, routeDescription);
-        }}
-        editingRoute={editingRoute || undefined}
-        displayEditableRouteWaypoints={displayEditableRouteWaypoints}
-        getEditableWaypointPositions={getEditableWaypointPositions}
-        clearEditableRouteWaypoints={clearEditableRouteWaypoints}
-        enableDrawRouteMode={enableDrawRouteMode}
-        disableDrawRouteMode={disableDrawRouteMode}
-        onDisplayRouteAfterSave={(route) => {
-          displayRoute(route);
+        onRouteCreated={(route) => {
+          setShowRouteBuilderModal(false);
+          // Display the newly created route — RouteSummaryPanel will appear
+          const isOwner = true; // User just created it
+          displayRoute(
+            route,
+            isOwner,
+            (waypointIndex, newLngLat, allWaypoints) => {
+              handleViewWaypointDragged(route, waypointIndex, newLngLat, allWaypoints);
+            },
+            (remainingWaypoints) => {
+              handleViewWaypointDeleted(route, remainingWaypoints);
+            }
+          );
+          // Auto-enable click-to-add waypoint mode for new routes
+          setIsAddingWaypointToRoute(true);
         }}
       />
       

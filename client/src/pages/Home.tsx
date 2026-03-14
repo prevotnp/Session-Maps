@@ -26,10 +26,7 @@ const Home: React.FC = () => {
   
   // Selected route for display
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
-  
-  // Route being edited
-  const [editingRoute, setEditingRoute] = useState<Route | null>(null);
-  
+
   // All routes to display at once
   const [routesToDisplayAll, setRoutesToDisplayAll] = useState<Route[] | null>(null);
   
@@ -94,14 +91,11 @@ const Home: React.FC = () => {
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col bg-black" style={{ paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
       {/* Main map view */}
-      <MapView 
+      <MapView
         onOpenOfflineModal={() => {}}
         onOpenDroneModal={() => setLocation('/upload')}
         selectedRoute={selectedRoute}
         onRouteDisplayed={() => setSelectedRoute(null)}
-        editingRoute={editingRoute}
-        onRouteEdited={() => setEditingRoute(null)}
-        onSetEditingRoute={setEditingRoute}
         routesToDisplayAll={routesToDisplayAll}
         onAllRoutesDisplayed={() => setRoutesToDisplayAll(null)}
         activatedDroneImage={activatedDroneImage}

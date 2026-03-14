@@ -14,6 +14,10 @@ interface RouteSummaryPanelProps {
   route: Route;
   onClose: () => void;
   isOwner?: boolean;
+  isAddingWaypoint?: boolean;
+  onStartAddWaypointMode?: () => void;
+  onStopAddWaypointMode?: () => void;
+  onDeleteWaypoint?: (index: number) => void;
   onAddPOIMode?: (enabled: boolean) => void;
   pendingPOILocation?: [number, number] | null;
   onClearPendingPOI?: () => void;
@@ -22,10 +26,14 @@ interface RouteSummaryPanelProps {
   onRouteUpdated?: (route: Route) => void;
 }
 
-export function RouteSummaryPanel({ 
-  route, 
-  onClose, 
+export function RouteSummaryPanel({
+  route,
+  onClose,
   isOwner = false,
+  isAddingWaypoint = false,
+  onStartAddWaypointMode,
+  onStopAddWaypointMode,
+  onDeleteWaypoint,
   onAddPOIMode,
   pendingPOILocation,
   onClearPendingPOI,
@@ -716,22 +724,46 @@ export function RouteSummaryPanel({
             </div>
             
             <div>
-              <button
-                onClick={() => setIsWaypointsExpanded(!isWaypointsExpanded)}
-                className="w-full flex items-center justify-between bg-white/5 hover:bg-white/10 rounded-lg p-2.5 transition-colors"
-                data-testid="route-waypoints"
-              >
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-purple-400" />
-                  <span className="text-sm text-white/60">Waypoints</span>
-                  <span className="text-sm font-semibold text-white">{waypointCount}</span>
-                </div>
-                {isWaypointsExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-white/60" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-white/60" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsWaypointsExpanded(!isWaypointsExpanded)}
+                  className="flex-1 flex items-center justify-between bg-white/5 hover:bg-white/10 rounded-lg p-2.5 transition-colors"
+                  data-testid="route-waypoints"
+                >
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-purple-400" />
+                    <span className="text-sm text-white/60">Waypoints</span>
+                    <span className="text-sm font-semibold text-white">{waypointCount}</span>
+                  </div>
+                  {isWaypointsExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-white/60" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-white/60" />
+                  )}
+                </button>
+                {isOwner && route.routingMode !== 'recorded' && onStartAddWaypointMode && (
+                  <button
+                    onClick={() => {
+                      if (isAddingWaypoint) {
+                        onStopAddWaypointMode?.();
+                      } else {
+                        onStartAddWaypointMode();
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      isAddingWaypoint
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-white/5 hover:bg-white/10 text-purple-400'
+                    }`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {isAddingWaypoint ? 'Adding...' : 'Add'}
+                  </button>
                 )}
-              </button>
+              </div>
+              {isAddingWaypoint && (
+                <p className="text-xs text-purple-300 mt-1.5 ml-1">Click on the map to add a waypoint</p>
+              )}
 
               {isWaypointsExpanded && (
                 <div className="mt-2 space-y-1">
@@ -845,6 +877,18 @@ export function RouteSummaryPanel({
                         
                         {isOwner && !isEditing && (
                           <Pencil className="h-3 w-3 text-white/30 flex-shrink-0" />
+                        )}
+                        {isOwner && route.routingMode !== 'recorded' && onDeleteWaypoint && !isEditing && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteWaypoint(index);
+                            }}
+                            className="flex-shrink-0 p-1 rounded hover:bg-red-500/20 transition-colors"
+                            title="Delete waypoint"
+                          >
+                            <Trash2 className="h-3 w-3 text-red-400/60 hover:text-red-400" />
+                          </button>
                         )}
                       </div>
                     );

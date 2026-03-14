@@ -424,14 +424,18 @@ export const useMapbox = (mapContainerRef: RefObject<HTMLDivElement>) => {
       ? JSON.parse(route.waypointCoordinates) 
       : [];
     
-    if (pathCoordinates.length < 2) return;
-    
     // Clear any existing displayed route first
     clearDisplayedRoute();
-    
-    // Store the displayed route for the summary panel
+
+    // Store the displayed route for the summary panel (even if empty, so RouteSummaryPanel appears)
     setDisplayedRoute(route);
-    
+
+    // If route has no path yet (e.g. newly created), just set displayedRoute and return
+    if (pathCoordinates.length < 2) {
+      displayedWaypointsRef.current = [];
+      return;
+    }
+
     // Add route line to map (using full path coordinates for the line)
     map.addSource('displayed-route', {
       type: 'geojson' as const,
