@@ -99,6 +99,35 @@ app.use((req, res, next) => {
     }
   })();
 
+  // Cleanup expired voice messages every 15 minutes
+  const cleanupExpiredVoiceMessages = async () => {
+    try {
+      const { storage } = await import('./storage');
+      const { deleteVoiceMessageAudio } = await import('./voiceStorage');
+      const expired = await storage.getExpiredVoiceMessages();
+      if (expired.length > 0) {
+        for (const msg of expired) {
+          if (msg.audioStoragePath) {
+            try {
+              await deleteVoiceMessageAudio(msg.audioStoragePath);
+            } catch (err) {
+              // Storage deletion may fail if already cleaned up
+            }
+          }
+        }
+        const count = await storage.deleteExpiredVoiceMessages();
+        if (count > 0) {
+          console.log(`[Cleanup] Deleted ${count} expired voice messages`);
+        }
+      }
+    } catch (err) {
+      console.error('[Cleanup] Voice message cleanup error:', err);
+    }
+  };
+  // Run cleanup on startup and then every 15 minutes
+  cleanupExpiredVoiceMessages();
+  setInterval(cleanupExpiredVoiceMessages, 15 * 60 * 1000);
+
   // Serve both the API and the client on a single port.
   // On Replit, port 5000 is the only non-firewalled port.
   const port = parseInt(process.env.PORT || "5000", 10);

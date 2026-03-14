@@ -34,7 +34,8 @@ import {
   EyeOff,
   Satellite,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Mic
 } from "lucide-react";
 import { PiBirdFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,8 @@ import { addUserLocationToMap, getElevation, findFirstSymbolOrCircleLayerId } fr
 import { isNative } from "@/lib/capacitor";
 import { startBackgroundTracking, stopBackgroundTracking } from "@/lib/backgroundLocation";
 import { startKeepAlive, stopKeepAlive } from "@/lib/silentAudioKeepAlive";
+import RadioPanel, { type VoiceMessage, playVoiceMessage } from "@/components/RadioPanel";
+import { registerPushSubscription } from "@/lib/pushNotifications";
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 // Color palette for different users in live map sessions
@@ -208,7 +211,14 @@ export default function LiveSharedMap() {
   const [activeDroneLayers, setActiveDroneLayers] = useState<Set<number>>(new Set());
   const [droneDropdownOpen, setDroneDropdownOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  
+
+  // Radio / push-to-talk state
+  const [showRadio, setShowRadio] = useState(false);
+  const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
+  const [talkingUsers, setTalkingUsers] = useState<Set<number>>(new Set());
+  const [unheardVoiceCount, setUnheardVoiceCount] = useState(0);
+  const showRadioRef = useRef(false);
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const mapInitialized = useRef(false);
@@ -224,6 +234,9 @@ export default function LiveSharedMap() {
   const intentionalCloseRef = useRef(false);
   const updateMemberMarkerRef = useRef<((userId: number, lat: number, lng: number) => void) | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep showRadioRef in sync with showRadio state
+  useEffect(() => { showRadioRef.current = showRadio; }, [showRadio]);
   const drawRouteMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const sharedRouteLayersRef = useRef<string[]>([]);
   const sharedRouteMarkersRef = useRef<mapboxgl.Marker[]>([]);
@@ -1223,6 +1236,18 @@ export default function LiveSharedMap() {
         ws.send(JSON.stringify({ type: 'auth', userId: user.id }));
         ws.send(JSON.stringify({ type: 'session:join', sessionId }));
 
+        // Register push subscription for offline voice message notifications
+        registerPushSubscription().then(pushToken => {
+          if (pushToken) {
+            fetch('/api/push/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ token: pushToken, platform: 'web' }),
+            }).catch(() => { /* ignore push registration errors */ });
+          }
+        }).catch(() => { /* ignore */ });
+
         // Start background location tracking on native platforms
         if (isNative && sessionId) {
           apiRequest('POST', `/api/live-maps/${sessionId}/background-token`)
@@ -1264,10 +1289,42 @@ export default function LiveSharedMap() {
           case 'route:updated':
             queryClient.invalidateQueries({ queryKey: ['/api/live-maps', sessionId] });
             break;
+          case 'voice:message': {
+            const vm = data.data;
+            const newMsg: VoiceMessage = {
+              id: vm.id,
+              userId: vm.userId,
+              username: vm.username,
+              audio: vm.audio,
+              mimeType: vm.mimeType,
+              duration: vm.duration,
+              timestamp: vm.timestamp,
+              hasPlayed: false,
+            };
+            setVoiceMessages(prev => [...prev.slice(-49), newMsg]);
+            // Auto-play the voice message (radio is always "on")
+            playVoiceMessage(newMsg).then(() => {
+              newMsg.hasPlayed = true;
+            });
+            if (!showRadioRef.current) {
+              setUnheardVoiceCount(prev => prev + 1);
+            }
+            break;
+          }
+          case 'voice:talking': {
+            const { userId: talkerId, isTalking } = data.data;
+            setTalkingUsers(prev => {
+              const next = new Set(prev);
+              if (isTalking) next.add(talkerId);
+              else next.delete(talkerId);
+              return next;
+            });
+            break;
+          }
           case 'session:ended':
-            toast({ 
-              title: "Session ended", 
-              description: "The session owner has ended this live team map" 
+            toast({
+              title: "Session ended",
+              description: "The session owner has ended this live team map"
             });
             setLocation("/");
             break;
@@ -1309,7 +1366,54 @@ export default function LiveSharedMap() {
       stopPwaBackgroundPolling();
     };
   }, [sessionId, user, stopPwaBackgroundPolling]);
-  
+
+  // Fetch missed voice messages (on initial load or reconnect)
+  const fetchMissedVoiceMessages = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      // Fetch messages from last hour (the TTL)
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const res = await fetch(`/api/live-maps/${sessionId}/voice-messages?since=${since}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const messages = await res.json();
+      if (messages.length > 0) {
+        const mapped: VoiceMessage[] = messages.map((m: any) => ({
+          id: m.id,
+          userId: m.userId,
+          username: m.user?.fullName || m.user?.username || 'Unknown',
+          audioUrl: `/api/voice-messages/${m.id}/audio`,
+          mimeType: m.mimeType,
+          duration: m.durationSeconds,
+          timestamp: new Date(m.createdAt).getTime(),
+          hasPlayed: true, // Mark as already played since these are historical
+        }));
+        setVoiceMessages(prev => {
+          const existingIds = new Set(prev.map(v => v.id));
+          const newMsgs = mapped.filter((m: VoiceMessage) => !existingIds.has(m.id));
+          return [...prev, ...newMsgs].slice(-50);
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch missed voice messages:', err);
+    }
+  }, [sessionId]);
+
+  // Check for openRadio URL param (from push notification deep link)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('openRadio') === 'true') {
+      setShowRadio(true);
+      // Clean up URL param
+      const url = new URL(window.location.href);
+      url.searchParams.delete('openRadio');
+      window.history.replaceState({}, '', url.toString());
+      // Fetch missed messages when opening from notification
+      fetchMissedVoiceMessages();
+    }
+  }, [fetchMissedVoiceMessages]);
+
   // Chat auto-scroll
   useEffect(() => {
     if (showChat && chatEndRef.current) {
@@ -1517,8 +1621,26 @@ export default function LiveSharedMap() {
       `;
       signalLostOverlay.textContent = '✕';
 
+      // Talking indicator ring (hidden by default)
+      const talkingRing = document.createElement('div');
+      talkingRing.className = 'talking-ring';
+      talkingRing.style.cssText = `
+        display: none;
+        position: absolute;
+        top: -6px;
+        left: -6px;
+        width: 36px;
+        height: 36px;
+        border: 3px solid #ef4444;
+        border-radius: 50%;
+        animation: talking-pulse 0.8s ease-in-out infinite;
+        z-index: 1;
+        pointer-events: none;
+      `;
+
       dotWrapper.appendChild(dot);
       dotWrapper.appendChild(signalLostOverlay);
+      dotWrapper.appendChild(talkingRing);
 
       const label = document.createElement('div');
       label.className = 'member-name-label';
@@ -1560,6 +1682,18 @@ export default function LiveSharedMap() {
   useEffect(() => {
     updateMemberMarkerRef.current = updateMemberMarker;
   }, [updateMemberMarker]);
+
+  // Update talking indicators on member markers
+  useEffect(() => {
+    memberMarkersRef.current.forEach((marker, userId) => {
+      const el = marker.getElement();
+      if (!el) return;
+      const ring = el.querySelector('.talking-ring') as HTMLElement;
+      if (ring) {
+        ring.style.display = talkingUsers.has(userId) ? 'block' : 'none';
+      }
+    });
+  }, [talkingUsers]);
 
   useEffect(() => {
     const SIGNAL_LOST_THRESHOLD = 2 * 60 * 1000;
@@ -2185,6 +2319,27 @@ export default function LiveSharedMap() {
                     <span className="text-[10px] mt-0.5">Chat</span>
                   </button>
 
+                  {/* Radio */}
+                  <button
+                    onClick={() => {
+                      setShowRadio(!showRadio);
+                      if (!showRadio) setUnheardVoiceCount(0);
+                    }}
+                    className={cn(
+                      "layer-toggle-btn bg-dark-gray/50 rounded-full p-1.5 sm:p-2 min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex flex-col items-center border-2 border-transparent transition-all active:scale-95 relative",
+                      showRadio && "active ring-2 ring-red-500"
+                    )}
+                    data-testid="toolbar-radio"
+                  >
+                    <Mic className="h-5 w-5 text-red-400" />
+                    <span className="text-[10px] mt-0.5">Radio</span>
+                    {unheardVoiceCount > 0 && (
+                      <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                        {unheardVoiceCount > 9 ? '9+' : unheardVoiceCount}
+                      </div>
+                    )}
+                  </button>
+
                   {/* Measure */}
                   <button
                     onClick={() => {
@@ -2773,8 +2928,8 @@ export default function LiveSharedMap() {
                 <MessageCircle className="w-5 h-5" />
                 Messages
               </h3>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-10 px-4 rounded-full hover:bg-gray-700 text-white border-white/30"
                 onClick={() => setShowChat(false)}
                 data-testid="button-close-chat"
@@ -2783,7 +2938,7 @@ export default function LiveSharedMap() {
                 Back to Team Map
               </Button>
             </div>
-            
+
             {/* Messages List */}
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
@@ -2791,7 +2946,7 @@ export default function LiveSharedMap() {
                   <p className="text-center text-gray-500 py-8">No messages yet. Start the conversation!</p>
                 ) : (
                   session.messages.map(msg => (
-                    <div 
+                    <div
                       key={msg.id}
                       className={`${msg.messageType === 'system' ? 'text-center' : ''}`}
                       data-testid={`message-${msg.id}`}
@@ -2800,8 +2955,8 @@ export default function LiveSharedMap() {
                         <span className="text-sm text-gray-500 italic">{msg.body}</span>
                       ) : (
                         <div className={`rounded-xl p-3 ${
-                          msg.userId === user?.id 
-                            ? 'bg-blue-600 ml-12' 
+                          msg.userId === user?.id
+                            ? 'bg-blue-600 ml-12'
                             : 'bg-gray-800 mr-12'
                         }`}>
                           <p className="text-xs text-gray-300 mb-1">
@@ -2816,7 +2971,7 @@ export default function LiveSharedMap() {
                 <div ref={chatEndRef} />
               </div>
             </ScrollArea>
-            
+
             {/* Message Input */}
             <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
               <div className="flex gap-3">
@@ -2827,8 +2982,8 @@ export default function LiveSharedMap() {
                   className="flex-1 h-12 text-base"
                   data-testid="input-chat-message"
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   size="icon"
                   className="h-12 w-12"
                   disabled={!messageInput.trim() || sendMessageMutation.isPending}
@@ -2839,6 +2994,20 @@ export default function LiveSharedMap() {
               </div>
             </form>
           </div>
+        )}
+
+        {/* Radio Panel Full-Screen Overlay */}
+        {showRadio && user && (
+          <RadioPanel
+            isOpen={showRadio}
+            onClose={() => setShowRadio(false)}
+            wsRef={wsRef}
+            sessionId={sessionId!}
+            currentUserId={user.id}
+            currentUsername={user.fullName || user.username}
+            voiceMessages={voiceMessages}
+            onNewVoiceMessage={(msg) => setVoiceMessages(prev => [...prev.slice(-49), msg])}
+          />
         )}
       </div>
       

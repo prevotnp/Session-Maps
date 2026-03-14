@@ -22,6 +22,7 @@ import {
   LiveMapPoi, InsertLiveMapPoi,
   LiveMapRoute, InsertLiveMapRoute,
   LiveMapMessage, InsertLiveMapMessage,
+  VoiceMessage, InsertVoiceMessage,
   LiveMapInvite, InsertLiveMapInvite,
   DeviceToken, InsertDeviceToken,
   PasswordResetToken,
@@ -219,6 +220,14 @@ export interface IStorage {
   createLiveMapMessage(message: InsertLiveMapMessage): Promise<LiveMapMessage>;
   getLiveMapMessages(sessionId: number, limit?: number): Promise<(LiveMapMessage & { user: User })[]>;
   
+  // Voice Message operations
+  createVoiceMessage(message: InsertVoiceMessage): Promise<VoiceMessage>;
+  updateVoiceMessagePath(id: number, audioStoragePath: string): Promise<void>;
+  getVoiceMessagesBySession(sessionId: number, since?: Date): Promise<(VoiceMessage & { user: User })[]>;
+  getVoiceMessage(id: number): Promise<VoiceMessage | undefined>;
+  getExpiredVoiceMessages(): Promise<VoiceMessage[]>;
+  deleteExpiredVoiceMessages(): Promise<number>;
+
   // Live Map Invite operations
   createLiveMapInvite(invite: InsertLiveMapInvite): Promise<LiveMapInvite>;
   getLiveMapInvitesForUser(userId: number): Promise<(LiveMapInvite & { session: LiveMapSession; fromUser: User })[]>;

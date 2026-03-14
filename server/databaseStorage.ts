@@ -25,6 +25,7 @@ import {
   liveMapPois,
   liveMapRoutes,
   liveMapMessages,
+  voiceMessages,
   liveMapInvites,
   liveMapGpsTracks,
   deviceTokens,
@@ -78,6 +79,8 @@ import {
   type InsertLiveMapRoute,
   type LiveMapMessage,
   type InsertLiveMapMessage,
+  type VoiceMessage,
+  type InsertVoiceMessage,
   type LiveMapInvite,
   type InsertLiveMapInvite,
   type LiveMapGpsTrack,
@@ -1388,6 +1391,55 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
     
     return messages.map(m => ({ ...m.message, user: m.user }));
+  }
+
+  // Voice Message operations
+  async createVoiceMessage(message: InsertVoiceMessage): Promise<VoiceMessage> {
+    const [newMessage] = await db.insert(voiceMessages).values(message).returning();
+    return newMessage;
+  }
+
+  async updateVoiceMessagePath(id: number, audioStoragePath: string): Promise<void> {
+    await db.update(voiceMessages).set({ audioStoragePath }).where(eq(voiceMessages.id, id));
+  }
+
+  async getVoiceMessagesBySession(sessionId: number, since?: Date): Promise<(VoiceMessage & { user: User })[]> {
+    const now = new Date();
+    const conditions = [
+      eq(voiceMessages.sessionId, sessionId),
+      sql`${voiceMessages.expiresAt} > ${now}`
+    ];
+    if (since) {
+      conditions.push(sql`${voiceMessages.createdAt} > ${since}`);
+    }
+
+    const messages = await db
+      .select({
+        message: voiceMessages,
+        user: users
+      })
+      .from(voiceMessages)
+      .innerJoin(users, eq(voiceMessages.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(voiceMessages.createdAt);
+
+    return messages.map(m => ({ ...m.message, user: m.user }));
+  }
+
+  async getVoiceMessage(id: number): Promise<VoiceMessage | undefined> {
+    const [msg] = await db.select().from(voiceMessages).where(eq(voiceMessages.id, id));
+    return msg;
+  }
+
+  async getExpiredVoiceMessages(): Promise<VoiceMessage[]> {
+    const now = new Date();
+    return await db.select().from(voiceMessages).where(sql`${voiceMessages.expiresAt} <= ${now}`);
+  }
+
+  async deleteExpiredVoiceMessages(): Promise<number> {
+    const now = new Date();
+    const result = await db.delete(voiceMessages).where(sql`${voiceMessages.expiresAt} <= ${now}`).returning();
+    return result.length;
   }
 
   // Live Map Invite operations

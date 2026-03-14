@@ -924,4 +924,86 @@ export function registerLiveMapRoutes(app: Express, wsState: WebSocketState) {
       res.status(500).json({ error: "Failed to update invite" });
     }
   });
+
+  // ===== Voice Message Endpoints =====
+
+  // Get missed voice messages for a session (since a timestamp)
+  app.get("/api/live-maps/:id/voice-messages", isAuthenticated, async (req: Request, res: Response) => {
+    const sessionId = parseId(req.params.id);
+    if (!sessionId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    try {
+      const isMember = await dbStorage.isLiveMapMember(sessionId, req.user!.id);
+      const session = await dbStorage.getLiveMapSession(sessionId);
+
+      if (!session || (!isMember && session.ownerId !== req.user!.id)) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const since = req.query.since ? new Date(req.query.since as string) : undefined;
+      const messages = await dbStorage.getVoiceMessagesBySession(sessionId, since);
+
+      const safeMessages = messages.map(m => ({
+        id: m.id,
+        userId: m.userId,
+        username: m.user?.fullName || m.user?.username || 'Unknown',
+        durationSeconds: m.durationSeconds,
+        mimeType: m.mimeType,
+        createdAt: m.createdAt,
+        audioUrl: `/api/voice-messages/${m.id}/audio`,
+      }));
+
+      res.json(safeMessages);
+    } catch (error) {
+      console.error('Error fetching voice messages:', error);
+      res.status(500).json({ error: "Failed to fetch voice messages" });
+    }
+  });
+
+  // Download a specific voice message audio
+  app.get("/api/voice-messages/:id/audio", isAuthenticated, async (req: Request, res: Response) => {
+    const messageId = parseId(req.params.id);
+    if (!messageId) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    try {
+      const voiceMsg = await dbStorage.getVoiceMessage(messageId);
+      if (!voiceMsg) {
+        return res.status(404).json({ error: "Voice message not found" });
+      }
+
+      // Verify user is a member of the session
+      const isMember = await dbStorage.isLiveMapMember(voiceMsg.sessionId, req.user!.id);
+      const session = await dbStorage.getLiveMapSession(voiceMsg.sessionId);
+      if (!session || (!isMember && session.ownerId !== req.user!.id)) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const { getVoiceMessageAudio } = await import('../voiceStorage');
+      const audioData = await getVoiceMessageAudio(voiceMsg.audioStoragePath);
+      if (!audioData) {
+        return res.status(404).json({ error: "Audio file not found" });
+      }
+
+      res.set({
+        'Content-Type': voiceMsg.mimeType,
+        'Content-Length': String(audioData.length),
+        'Cache-Control': 'private, max-age=3600',
+      });
+      res.send(audioData);
+    } catch (error) {
+      console.error('Error serving voice message audio:', error);
+      res.status(500).json({ error: "Failed to serve audio" });
+    }
+  });
+
+  // Get VAPID public key for push subscription
+  app.get("/api/push/vapid-key", async (_req: Request, res: Response) => {
+    const { getVapidPublicKey } = await import('../pushNotifications');
+    const publicKey = getVapidPublicKey();
+    res.json({ publicKey });
+  });
 }

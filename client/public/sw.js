@@ -134,9 +134,11 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-72.png',
-    vibrate: [100, 50, 100],
+    vibrate: [200, 100, 200],
     data: data.data || {},
-    actions: data.actions || []
+    actions: data.actions || [],
+    tag: data.data?.type === 'voice_message' ? 'voice-message' : undefined,
+    renotify: data.data?.type === 'voice_message' ? true : false,
   };
 
   event.waitUntil(
@@ -153,11 +155,21 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
+        // For live map voice messages, try to navigate an existing window
         for (const client of clientList) {
-          if (client.url === targetUrl && 'focus' in client) {
+          if (client.url.includes('/live-map/') && 'focus' in client) {
+            client.navigate(targetUrl);
             return client.focus();
           }
         }
+        // Focus any existing window
+        for (const client of clientList) {
+          if ('focus' in client) {
+            client.navigate(targetUrl);
+            return client.focus();
+          }
+        }
+        // Open new window
         if (clients.openWindow) {
           return clients.openWindow(targetUrl);
         }

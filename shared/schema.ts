@@ -336,6 +336,18 @@ export const liveMapMessages = pgTable("live_map_messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Voice Messages - push-to-talk radio messages for live map sessions
+export const voiceMessages = pgTable("voice_messages", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => liveMapSessions.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  audioStoragePath: text("audio_storage_path").notNull(),
+  mimeType: text("mime_type").notNull(),
+  durationSeconds: integer("duration_seconds").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Live Map Invites - in-app notifications for live map invitations
 export const liveMapInvites = pgTable("live_map_invites", {
   id: serial("id").primaryKey(),
@@ -656,6 +668,15 @@ export const insertLiveMapMessageSchema = createInsertSchema(liveMapMessages).pi
   messageType: true,
 });
 
+export const insertVoiceMessageSchema = createInsertSchema(voiceMessages).pick({
+  sessionId: true,
+  userId: true,
+  audioStoragePath: true,
+  mimeType: true,
+  durationSeconds: true,
+  expiresAt: true,
+});
+
 export const insertLiveMapInviteSchema = createInsertSchema(liveMapInvites).pick({
   sessionId: true,
   fromUserId: true,
@@ -865,6 +886,8 @@ export type InsertLiveMapRoute = z.infer<typeof insertLiveMapRouteSchema>;
 export type LiveMapRoute = typeof liveMapRoutes.$inferSelect;
 export type InsertLiveMapMessage = z.infer<typeof insertLiveMapMessageSchema>;
 export type LiveMapMessage = typeof liveMapMessages.$inferSelect;
+export type InsertVoiceMessage = z.infer<typeof insertVoiceMessageSchema>;
+export type VoiceMessage = typeof voiceMessages.$inferSelect;
 export type InsertLiveMapInvite = z.infer<typeof insertLiveMapInviteSchema>;
 export type LiveMapInvite = typeof liveMapInvites.$inferSelect;
 export type InsertLiveMapGpsTrack = z.infer<typeof insertLiveMapGpsTrackSchema>;
