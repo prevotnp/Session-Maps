@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Route as RouteIcon, Map, Clock, Ruler, Mountain, X, UserPlus, Trash2, Share2, Box, Search } from 'lucide-react';
+import { Route as RouteIcon, Map, Clock, Ruler, Mountain, X, UserPlus, Trash2, Share2, Box, Search, Check } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Route } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -35,7 +35,7 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
   const [, navigate] = useLocation();
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedRouteForSharing, setSelectedRouteForSharing] = useState<RouteWithSharing | null>(null);
-  const [friendUsername, setFriendUsername] = useState('');
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'my-maps' | 'shared'>('my-maps');
 
@@ -51,14 +51,31 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
     enabled: shareModalOpen && !!selectedRouteForSharing,
   });
 
+  // Fetch user's friends list for the share modal
+  const { data: friendsList = [] } = useQuery<Array<{ id: number; friend: { id: number; username: string; fullName: string | null } }>>({
+    queryKey: ['/api/friends'],
+    enabled: shareModalOpen,
+  });
+
+  // Filter friends by search and exclude already-shared users
+  const alreadySharedIds = new Set(routeShares.map(s => s.sharedWithUserId));
+  const availableFriends = friendsList
+    .map(f => f.friend)
+    .filter(f => !alreadySharedIds.has(f.id))
+    .filter(f => {
+      if (!friendSearchQuery.trim()) return true;
+      const q = friendSearchQuery.toLowerCase();
+      return f.username.toLowerCase().includes(q) || (f.fullName?.toLowerCase().includes(q) ?? false);
+    });
+
   // Share route mutation
   const shareMutation = useMutation({
     mutationFn: async ({ routeId, identifier }: { routeId: number; identifier: string }) => {
-      return apiRequest('POST', `/api/routes/${routeId}/share`, { identifier });
+      return apiRequest('POST', `/api/routes/${routeId}/share`, { emailOrUsername: identifier });
     },
     onSuccess: () => {
       toast({ title: 'Route shared successfully!' });
-      setFriendUsername('');
+      setFriendSearchQuery('');
       queryClient.invalidateQueries({ queryKey: ['/api/routes', selectedRouteForSharing?.id, 'shares'] });
       queryClient.invalidateQueries({ queryKey: ['/api/routes'] });
     },
@@ -212,11 +229,11 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
     setShareModalOpen(true);
   };
 
-  const handleAddShare = () => {
-    if (!friendUsername.trim() || !selectedRouteForSharing) return;
-    shareMutation.mutate({ 
-      routeId: selectedRouteForSharing.id, 
-      identifier: friendUsername.trim() 
+  const handleShareWithFriend = (username: string) => {
+    if (!selectedRouteForSharing) return;
+    shareMutation.mutate({
+      routeId: selectedRouteForSharing.id,
+      identifier: username
     });
   };
 
@@ -536,59 +553,103 @@ const RoutesModal: React.FC<RoutesModalProps> = ({ isOpen, onClose, onSelectRout
       </Dialog>
 
       {/* Share Route Modal */}
-      <Dialog open={shareModalOpen} onOpenChange={setShareModalOpen}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={shareModalOpen} onOpenChange={(open) => {
+        setShareModalOpen(open);
+        if (!open) setFriendSearchQuery('');
+      }}>
+        <DialogContent className="max-w-sm max-h-[70vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Share2 className="h-5 w-5" />
-              Share Route
+              Share Map
             </DialogTitle>
           </DialogHeader>
-          
+
           {selectedRouteForSharing && (
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 min-h-0 flex-1">
               <p className="text-sm text-muted-foreground">
-                Share "<span className="font-medium text-foreground">{selectedRouteForSharing.name}</span>" with a friend
+                Share "<span className="font-medium text-foreground">{selectedRouteForSharing.name}</span>" with friends
               </p>
-              
-              {/* Add friend input */}
-              <div className="flex gap-2">
+
+              {/* Friend search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Friend's username or email"
-                  value={friendUsername}
-                  onChange={(e) => setFriendUsername(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddShare()}
-                  data-testid="input-share-username"
+                  placeholder="Search friends..."
+                  value={friendSearchQuery}
+                  onChange={(e) => setFriendSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-share-search"
                 />
-                <Button 
-                  onClick={handleAddShare}
-                  disabled={!friendUsername.trim() || shareMutation.isPending}
-                  data-testid="button-add-share"
-                >
-                  <UserPlus className="h-4 w-4" />
-                </Button>
               </div>
 
-              {/* Current shares list */}
+              {/* Friends list to share with */}
+              <div className="overflow-y-auto min-h-0 flex-1 space-y-1">
+                {availableFriends.length === 0 && friendsList.length > 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    {friendSearchQuery.trim() ? 'No matching friends found' : 'Already shared with all friends'}
+                  </p>
+                )}
+                {friendsList.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Add friends first to share maps with them
+                  </p>
+                )}
+                {availableFriends.map((friend) => (
+                  <div
+                    key={friend.id}
+                    className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-accent/50 transition-colors"
+                    data-testid={`share-friend-${friend.id}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {friend.fullName || friend.username}
+                      </p>
+                      {friend.fullName && (
+                        <p className="text-xs text-muted-foreground">@{friend.username}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => handleShareWithFriend(friend.username)}
+                      disabled={shareMutation.isPending}
+                      data-testid={`button-share-with-${friend.id}`}
+                    >
+                      <Share2 className="h-3.5 w-3.5 mr-1.5" />
+                      Share
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Currently shared with */}
               {routeShares.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium">Currently shared with:</h4>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                <div className="border-t pt-3 space-y-2">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Shared with ({routeShares.length})
+                  </h4>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
                     {routeShares.map((share) => (
-                      <div 
-                        key={share.id} 
-                        className="flex items-center justify-between bg-accent/50 rounded-md px-3 py-2"
+                      <div
+                        key={share.id}
+                        className="flex items-center justify-between rounded-md px-3 py-2 bg-accent/30"
                         data-testid={`share-item-${share.id}`}
                       >
-                        <span className="text-sm">{share.sharedWithUsername}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                          <span className="text-sm truncate">{share.sharedWithUsername}</span>
+                        </div>
                         <Button
                           size="sm"
                           variant="ghost"
+                          className="shrink-0 h-7 w-7 p-0 text-destructive hover:text-destructive"
                           onClick={() => handleRevokeShare(share.id)}
                           disabled={revokeMutation.isPending}
+                          title="Remove share"
                           data-testid={`button-revoke-share-${share.id}`}
                         >
-                          <X className="h-4 w-4 text-destructive" />
+                          <X className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     ))}
