@@ -742,23 +742,34 @@ export function RouteSummaryPanel({
                   )}
                 </button>
                 {isOwner && route.routingMode !== 'recorded' && onStartAddWaypointMode && (
-                  <button
-                    onClick={() => {
-                      if (isAddingWaypoint) {
-                        onStopAddWaypointMode?.();
-                      } else {
-                        onStartAddWaypointMode();
-                      }
-                    }}
-                    className={`flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      isAddingWaypoint
-                        ? 'bg-purple-500 text-white'
-                        : 'bg-white/5 hover:bg-white/10 text-purple-400'
-                    }`}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {isAddingWaypoint ? 'Adding...' : 'Add'}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        if (isAddingWaypoint) {
+                          onStopAddWaypointMode?.();
+                        } else {
+                          onStartAddWaypointMode();
+                        }
+                      }}
+                      className={`flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                        isAddingWaypoint
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-white/5 hover:bg-white/10 text-purple-400'
+                      }`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {isAddingWaypoint ? '+ Adding' : 'Add'}
+                    </button>
+                    {isAddingWaypoint && (
+                      <button
+                        onClick={() => onStopAddWaypointMode?.()}
+                        className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Save Waypoints
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {isAddingWaypoint && (
