@@ -219,6 +219,16 @@ export default function LiveSharedMap() {
   const [unheardVoiceCount, setUnheardVoiceCount] = useState(0);
   const showRadioRef = useRef(false);
 
+  // Quick-record state (floating mic button on map)
+  const [quickRecording, setQuickRecording] = useState(false);
+  const [quickRecordingTime, setQuickRecordingTime] = useState(0);
+  const [quickSentFlash, setQuickSentFlash] = useState(false);
+  const quickRecorderRef = useRef<MediaRecorder | null>(null);
+  const quickChunksRef = useRef<Blob[]>([]);
+  const quickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quickStartTimeRef = useRef(0);
+  const quickStreamRef = useRef<MediaStream | null>(null);
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const mapInitialized = useRef(false);
@@ -1400,6 +1410,112 @@ export default function LiveSharedMap() {
     }
   }, [sessionId]);
 
+  // Quick-record: stop and send (defined first so handleQuickRecordStart can reference it)
+  const handleQuickRecordStop = useCallback(() => {
+    if (quickRecorderRef.current && quickRecorderRef.current.state === 'recording') {
+      quickRecorderRef.current.stop();
+    }
+    setQuickRecording(false);
+    setQuickRecordingTime(0);
+    if (quickTimerRef.current) {
+      clearInterval(quickTimerRef.current);
+      quickTimerRef.current = null;
+    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'voice:talking', isTalking: false }));
+    }
+  }, [wsRef]);
+
+  // Quick-record: start recording from floating mic button
+  const handleQuickRecordStart = useCallback(async () => {
+    if (!sessionId || !user) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      quickStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : 'audio/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      quickRecorderRef.current = recorder;
+      quickChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) quickChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(quickChunksRef.current, { type: mimeType });
+        const duration = Math.round((Date.now() - quickStartTimeRef.current) / 1000);
+
+        if (duration < 1 || blob.size < 100) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          const username = user.fullName || user.username;
+
+          fetch(`/api/live-maps/${sessionId}/voice-messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ audio: base64, mimeType, duration, username }),
+          }).then(res => {
+            if (res.ok) return res.json();
+            throw new Error('Upload failed');
+          }).then(({ id, timestamp }) => {
+            setVoiceMessages(prev => [...prev.slice(-49), {
+              id,
+              userId: user.id,
+              username,
+              audioUrl: `/api/voice-messages/${id}/audio`,
+              mimeType,
+              duration,
+              timestamp,
+              hasPlayed: true,
+            }]);
+            setQuickSentFlash(true);
+            setTimeout(() => setQuickSentFlash(false), 1500);
+          }).catch(err => {
+            console.error('Voice message upload failed:', err);
+          });
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(t => t.stop());
+      };
+
+      recorder.start();
+      quickStartTimeRef.current = Date.now();
+      setQuickRecording(true);
+      setQuickRecordingTime(0);
+
+      // Send talking indicator
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'voice:talking', isTalking: true }));
+      }
+
+      // Timer
+      quickTimerRef.current = setInterval(() => {
+        const elapsed = Math.round((Date.now() - quickStartTimeRef.current) / 1000);
+        setQuickRecordingTime(elapsed);
+        if (elapsed >= 30) {
+          handleQuickRecordStop();
+        }
+      }, 200);
+    } catch (err: any) {
+      console.error('Quick record mic error:', err);
+      toast({ title: 'Microphone access required', description: 'Enable microphone in browser settings', variant: 'destructive' });
+    }
+  }, [sessionId, user, wsRef, toast, handleQuickRecordStop]);
+
   // Check for openRadio URL param (from push notification deep link)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2174,6 +2290,50 @@ export default function LiveSharedMap() {
               <Navigation2 className="h-5 w-5 text-white" />
             </button>
           </div>
+
+          {/* Quick-Record Floating Mic Button (upper-left) */}
+          {!showRadio && !quickRecording && !showChat && !showMembers && (
+            <div className="absolute top-4 left-4 z-30" style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}>
+              <button
+                onClick={handleQuickRecordStart}
+                className="quick-record-btn bg-red-600 rounded-full p-3 min-w-[52px] min-h-[52px] flex items-center justify-center shadow-lg hover:bg-red-700 active:scale-95 transition-all border-2 border-white/20"
+                aria-label="Quick record voice message"
+              >
+                <Mic className="h-6 w-6 text-white" />
+              </button>
+              {quickSentFlash && (
+                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap">
+                  Sent!
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quick-Record Overlay (full screen when recording) */}
+          {quickRecording && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center quick-record-overlay">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+              <div className="relative flex flex-col items-center gap-6">
+                {/* Timer */}
+                <div className="text-white text-2xl font-mono tracking-wider">
+                  0:{quickRecordingTime.toString().padStart(2, '0')} / 0:30
+                </div>
+                {/* Recording indicator */}
+                <div className="flex items-center gap-2 text-red-400">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-medium uppercase tracking-wider">Recording</span>
+                </div>
+                {/* Stop & Send Button */}
+                <button
+                  onClick={handleQuickRecordStop}
+                  className="quick-record-stop-btn bg-red-600 hover:bg-red-700 text-white rounded-full w-36 h-36 flex flex-col items-center justify-center shadow-2xl border-4 border-white/30 active:scale-95 transition-transform"
+                >
+                  <div className="w-8 h-8 bg-white rounded-sm mb-2" />
+                  <span className="text-sm font-bold uppercase tracking-wider">Stop & Send</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Unified Toolbar */}
           <div className={cn(

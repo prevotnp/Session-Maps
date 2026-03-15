@@ -223,3 +223,20 @@
     opacity: 1;
   }
 }
+
+/* Quick-record stop button pulse */
+.quick-record-stop-btn {
+  animation: quick-record-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes quick-record-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 20px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
