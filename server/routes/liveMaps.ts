@@ -928,7 +928,7 @@ export function registerLiveMapRoutes(app: Express, wsState: WebSocketState) {
 
   // ===== Voice Message Endpoints =====
 
-  // Upload a voice message (audio via REST, then broadcast metadata via WebSocket)
+  // Upload a voice message (audio stored in DB, metadata broadcast via WebSocket)
   app.post("/api/live-maps/:id/voice-messages", isAuthenticated, async (req: Request, res: Response) => {
     const sessionId = parseId(req.params.id);
     if (!sessionId) {
@@ -950,30 +950,19 @@ export function registerLiveMapRoutes(app: Express, wsState: WebSocketState) {
       }
 
       const msgTimestamp = Date.now();
-
-      // 1. Store in database
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour TTL
+
+      // Store audio directly in the database (no Object Storage dependency)
       const voiceMsg = await dbStorage.createVoiceMessage({
         sessionId,
         userId,
-        audioStoragePath: '',
+        audioData: audio,
         mimeType: mimeType || 'audio/webm',
         durationSeconds: Math.round(duration || 0),
         expiresAt,
       });
 
-      // 2. Store audio in object storage
-      try {
-        const { storeVoiceMessage } = await import('../voiceStorage');
-        const storagePath = await storeVoiceMessage(
-          sessionId, voiceMsg.id, audio, mimeType || 'audio/webm'
-        );
-        await dbStorage.updateVoiceMessagePath(voiceMsg.id, storagePath);
-      } catch (storageErr) {
-        console.error('Voice storage error:', storageErr);
-      }
-
-      // 3. Broadcast SMALL metadata-only notification via WebSocket (no audio data)
+      // Broadcast small metadata-only notification via WebSocket (no audio payload)
       const { clients, sessionRooms } = wsState;
       const room = sessionRooms.get(sessionId);
       const onlineUserIds = room ? new Set(room) : new Set<number>();
@@ -1005,13 +994,12 @@ export function registerLiveMapRoutes(app: Express, wsState: WebSocketState) {
         });
       }
 
-      // 4. Send push notifications to OFFLINE session members
+      // Send push notifications to offline session members (best-effort)
       try {
         const members = await dbStorage.getLiveMapMembers(sessionId);
         const sender = await dbStorage.getUser(userId);
         const senderName = sender?.fullName || sender?.username || 'Someone';
         const sessionName = session?.name || 'Team Map';
-
         const { sendPushNotification } = await import('../pushNotifications');
 
         for (const member of members) {
@@ -1103,18 +1091,18 @@ export function registerLiveMapRoutes(app: Express, wsState: WebSocketState) {
         return res.status(403).json({ error: "Not authorized" });
       }
 
-      const { getVoiceMessageAudio } = await import('../voiceStorage');
-      const audioData = await getVoiceMessageAudio(voiceMsg.audioStoragePath);
-      if (!audioData) {
-        return res.status(404).json({ error: "Audio file not found" });
+      if (!voiceMsg.audioData) {
+        return res.status(404).json({ error: "Audio data not found" });
       }
 
+      // Decode base64 audio from database and serve as binary
+      const audioBuffer = Buffer.from(voiceMsg.audioData, 'base64');
       res.set({
         'Content-Type': voiceMsg.mimeType,
-        'Content-Length': String(audioData.length),
+        'Content-Length': String(audioBuffer.length),
         'Cache-Control': 'private, max-age=3600',
       });
-      res.send(audioData);
+      res.send(audioBuffer);
     } catch (error) {
       console.error('Error serving voice message audio:', error);
       res.status(500).json({ error: "Failed to serve audio" });

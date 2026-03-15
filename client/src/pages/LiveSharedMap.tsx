@@ -1236,6 +1236,9 @@ export default function LiveSharedMap() {
         ws.send(JSON.stringify({ type: 'auth', userId: user.id }));
         ws.send(JSON.stringify({ type: 'session:join', sessionId }));
 
+        // Fetch any missed voice messages from the last hour
+        fetchMissedVoiceMessages();
+
         // Register push subscription for offline voice message notifications
         registerPushSubscription().then(pushToken => {
           if (pushToken) {
@@ -1379,7 +1382,7 @@ export default function LiveSharedMap() {
         const mapped: VoiceMessage[] = messages.map((m: any) => ({
           id: m.id,
           userId: m.userId,
-          username: m.user?.fullName || m.user?.username || 'Unknown',
+          username: m.username || 'Unknown',
           audioUrl: `/api/voice-messages/${m.id}/audio`,
           mimeType: m.mimeType,
           duration: m.durationSeconds,

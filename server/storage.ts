@@ -222,7 +222,6 @@ export interface IStorage {
   
   // Voice Message operations
   createVoiceMessage(message: InsertVoiceMessage): Promise<VoiceMessage>;
-  updateVoiceMessagePath(id: number, audioStoragePath: string): Promise<void>;
   getVoiceMessagesBySession(sessionId: number, since?: Date): Promise<(VoiceMessage & { user: User })[]>;
   getVoiceMessage(id: number): Promise<VoiceMessage | undefined>;
   getExpiredVoiceMessages(): Promise<VoiceMessage[]>;

@@ -1399,10 +1399,6 @@ export class DatabaseStorage implements IStorage {
     return newMessage;
   }
 
-  async updateVoiceMessagePath(id: number, audioStoragePath: string): Promise<void> {
-    await db.update(voiceMessages).set({ audioStoragePath }).where(eq(voiceMessages.id, id));
-  }
-
   async getVoiceMessagesBySession(sessionId: number, since?: Date): Promise<(VoiceMessage & { user: User })[]> {
     const now = new Date();
     const conditions = [

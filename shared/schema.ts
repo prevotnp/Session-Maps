@@ -341,7 +341,7 @@ export const voiceMessages = pgTable("voice_messages", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id").notNull().references(() => liveMapSessions.id, { onDelete: 'cascade' }),
   userId: integer("user_id").notNull().references(() => users.id),
-  audioStoragePath: text("audio_storage_path").notNull(),
+  audioData: text("audio_data").notNull(),
   mimeType: text("mime_type").notNull(),
   durationSeconds: integer("duration_seconds").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -671,7 +671,7 @@ export const insertLiveMapMessageSchema = createInsertSchema(liveMapMessages).pi
 export const insertVoiceMessageSchema = createInsertSchema(voiceMessages).pick({
   sessionId: true,
   userId: true,
-  audioStoragePath: true,
+  audioData: true,
   mimeType: true,
   durationSeconds: true,
   expiresAt: true,
